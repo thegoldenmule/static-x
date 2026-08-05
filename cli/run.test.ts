@@ -35,7 +35,7 @@ describe('runCli', () => {
   it('exits 2 with usage on missing arguments', async () => {
     const { err, io } = capture();
     expect(await runCli([], io)).toBe(2);
-    expect(err.join('\n')).toMatch(/Usage: sx/);
+    expect(err.join('\n')).toMatch(/Usage: static-x/);
     expect(err.join('\n')).toMatch(/ts\/comments\/long/);
   });
 

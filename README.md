@@ -8,10 +8,35 @@ Each language has its own directory containing the machinery to run its language
 - **[MCP server](mcp/README.md)** — expose the tools to Claude Code and other MCP clients
 - **[Project plan](docs/plan.md)** — architecture, tool contracts, and milestones
 
-Run a tool:
+## Install
+
+Requires Node 20+. No build step — the CLI runs the TypeScript sources directly.
 
 ```sh
-npm run sx -- ts/comments/long --project path/to/project
+git clone https://github.com/thegoldenmule/static-x.git
+cd static-x
+npm install
+npm link        # puts `static-x` and `static-x-mcp` on your PATH
 ```
 
-Output is JSON findings (or edits); exit code 0 means clean, 1 means findings, 2 means error.
+(Without `npm link`, substitute `node /path/to/static-x/cli/sx.mjs` for `static-x` below.)
+
+## Use on a project
+
+Point any tool at a TypeScript project — a directory containing (or whose subtree contains) a `tsconfig.json`:
+
+```sh
+cd ~/code/my-app
+
+static-x ts/comments/stale-refs --project .
+static-x ts/comments/long --project . --input '{"maxLines": 20}'
+static-x ts/comments/llm-tells --project .
+static-x ts/refactors/rename --project . \
+  --input '{"symbol": "makeOptions", "newName": "buildOptions"}'          # dry-run
+static-x ts/refactors/rename --project . \
+  --input '{"symbol": "makeOptions", "newName": "buildOptions", "apply": true}'
+```
+
+Usage is `static-x <tool> --project <root> [--input '<json>']`. Running with no arguments lists the available tools. Output is JSON on stdout — findings for analysis tools, a `WorkspaceEdit` plus status for refactors — so results pipe cleanly into `jq` or an LLM. Exit codes: `0` clean, `1` findings reported, `2` usage or execution error.
+
+Each tool's README ([table here](ts/README.md)) documents its options, output shape, and what its findings mean. To use the tools from Claude Code conversationally, register the [MCP server](mcp/README.md).

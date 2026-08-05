@@ -30,7 +30,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
   const [toolName] = parsed.positionals;
   const project = parsed.values.project;
   if (!toolName || !project) {
-    io.err('Usage: sx <tool> --project <root> [--input \'<json>\']');
+    io.err("Usage: static-x <tool> --project <root> [--input '<json>']");
     io.err(`Tools: ${registry.names().join(', ')}`);
     return 2;
   }

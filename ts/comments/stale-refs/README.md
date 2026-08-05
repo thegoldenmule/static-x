@@ -13,5 +13,7 @@ Finds comments that reference code that doesn't exist — the comment survived a
 `Finding[]` — `comment.stale-param` (severity `warning`) for parameter-tag mismatches, `comment.stale-ref` for everything else. `data` carries the unresolved `name`, the extraction `source` (`param-tag` / `jsdoc-tag` / `code-span` / `bare`), and a `confidence` of `high` (param tags), `medium` (JSDoc tags, code spans), or `low` (bare prose, severity `info`) so consumers can choose what to act on. Ranges point at the reference inside the comment, not the whole comment.
 
 ```sh
-npm run sx -- ts/comments/stale-refs --project path/to/project
+static-x ts/comments/stale-refs --project path/to/project
 ```
+
+([Install instructions](../../../README.md#install).)

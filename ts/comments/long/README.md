@@ -18,5 +18,7 @@ Comment ranges come from AST node trivia — not text scanning — so comment-li
 `Finding[]` with code `comment.long`, an LSP-compatible range covering the block, and `data: { lines, chars, maxLines, maxChars, kind }` where `kind` is `line-block` or `block`.
 
 ```sh
-npm run sx -- ts/comments/long --project path/to/project --input '{"maxLines": 20}'
+static-x ts/comments/long --project path/to/project --input '{"maxLines": 20}'
 ```
+
+([Install instructions](../../../README.md#install).)

@@ -28,5 +28,9 @@
     "vitest": "^4.1.10",
     "vscode-jsonrpc": "^9.0.1",
     "vscode-languageserver-protocol": "^3.18.2"
+  },
+  "bin": {
+    "static-x": "cli/sx.mjs",
+    "static-x-mcp": "mcp/sx-mcp.mjs"
   }
 }

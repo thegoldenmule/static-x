@@ -20,6 +20,8 @@ Renames a symbol across the whole project through the language server (`prepareR
 `{ applied, edit, filesChanged, newDiagnostics }` — `edit` is an LSP-compatible `WorkspaceEdit` keyed by absolute file path.
 
 ```sh
-npm run sx -- ts/refactors/rename --project path/to/project \
+static-x ts/refactors/rename --project path/to/project \
   --input '{"symbol": "makeOptions", "newName": "buildOptions", "apply": true}'
 ```
+
+([Install instructions](../../../README.md#install).)

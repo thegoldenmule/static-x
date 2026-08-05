@@ -19,5 +19,7 @@ Each matched pattern contributes its weight; a comment is flagged when the sum r
 `Finding[]` with code `comment.llm-tell`, severity `info`, and `data: { score, matches }` listing the matched pattern ids.
 
 ```sh
-npm run sx -- ts/comments/llm-tells --project path/to/project --input '{"minScore": 2}'
+static-x ts/comments/llm-tells --project path/to/project --input '{"minScore": 2}'
 ```
+
+([Install instructions](../../../README.md#install).)

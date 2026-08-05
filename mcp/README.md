@@ -6,10 +6,16 @@ Sessions are cached per project root for the life of the server process, so repe
 
 ## Registering with Claude Code
 
-From this repository:
+After [installing](../README.md#install) (`npm install` + `npm link` in this repo):
 
 ```sh
-claude mcp add static-x -- npx tsx /absolute/path/to/static-x/mcp/main.ts
+claude mcp add static-x -- static-x-mcp
+```
+
+Without `npm link`, point at the shim directly:
+
+```sh
+claude mcp add static-x -- node /absolute/path/to/static-x/mcp/sx-mcp.mjs
 ```
 
 Then ask Claude things like *"run stale-refs on this project"* or *"rename makeOptions to buildOptions (dry-run first)"* — the tool descriptions and schemas are written for the model to drive directly.
@@ -17,5 +23,5 @@ Then ask Claude things like *"run stale-refs on this project"* or *"rename makeO
 ## Running standalone
 
 ```sh
-npm run mcp   # speaks MCP on stdio
+static-x-mcp   # speaks MCP on stdio (or: npm run mcp from this repo)
 ```
