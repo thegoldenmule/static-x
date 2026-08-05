@@ -64,8 +64,18 @@ describe('ts/comments/stale-refs on the fixture project', () => {
       'greeter.ts:comment.stale-ref:LegacyGreeter',
       'greeter.ts:comment.stale-ref:formatSalutation',
       'literals.ts:comment.stale-ref:legacy-utils.ts',
+      'literals.ts:comment.stale-ref:makeOptions',
       'math.ts:comment.stale-param:minuend',
     ]);
+  });
+
+  it('resolves sibling-package names via extraRoots', async () => {
+    // makeOptions lives in the rename-ts fixture; with that root added
+    // to the index, only the other three seeded findings remain.
+    const findings = await staleRefs.run(session, { extraRoots: ['../rename-ts'] });
+    const names = findings.map((f: Finding) => f.data?.name);
+    expect(names).not.toContain('makeOptions');
+    expect(findings).toHaveLength(4);
   });
 
   it('does not flag references that resolve via globals, file, or project', async () => {
@@ -82,7 +92,7 @@ describe('ts/comments/stale-refs on the fixture project', () => {
     // survives resolution.
     const findings = await staleRefs.run(session, {});
     const inFile = findings.filter((f: Finding) => f.file.endsWith('literals.ts'));
-    expect(inFile.map((f: Finding) => f.data?.name)).toEqual(['legacy-utils.ts']);
+    expect(inFile.map((f: Finding) => f.data?.name)).toEqual(['legacy-utils.ts', 'makeOptions']);
     expect(inFile[0]?.data).toMatchObject({ kind: 'file' });
   });
 

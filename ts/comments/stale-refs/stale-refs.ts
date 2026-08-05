@@ -12,6 +12,15 @@ import { collectCommentRanges } from '../collect.js';
  * words shaped like identifiers that resolve nowhere.
  */
 
+export interface StaleRefsInput {
+  /**
+   * Additional roots (e.g. sibling monorepo packages) whose declared
+   * and literal names count as existing. Relative paths resolve
+   * against the project root. Parsed syntactically — no typecheck.
+   */
+  extraRoots?: string[];
+}
+
 type Source = 'param-tag' | 'jsdoc-tag' | 'code-span' | 'bare';
 
 interface Candidate {
@@ -143,6 +152,20 @@ export function extractCandidates(commentText: string): Candidate[] {
   return candidates;
 }
 
+/** Declared + literal names from a root, via syntax-only parsing. */
+function namesFromRoot(root: string): Set<string> {
+  const names = new Set<string>();
+  const files = ts.sys.readDirectory(root, ['.ts', '.tsx'], ['**/node_modules'], undefined);
+  for (const file of files) {
+    const text = ts.sys.readFile(file);
+    if (text === undefined) continue;
+    const sourceFile = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+    for (const name of declaredNames(sourceFile)) names.add(name);
+    for (const name of literalVocabulary(sourceFile)) names.add(name);
+  }
+  return names;
+}
+
 /** Parameter names of the function a JSDoc comment documents. */
 function paramOwners(sourceFile: ts.SourceFile): Map<number, ts.SignatureDeclaration> {
   const text = sourceFile.getFullText();
@@ -168,7 +191,7 @@ function paramOwners(sourceFile: ts.SourceFile): Map<number, ts.SignatureDeclara
   return owners;
 }
 
-export const staleRefs: Tool<Record<string, never>, Finding[], TsProjectSession> = {
+export const staleRefs: Tool<StaleRefsInput, Finding[], TsProjectSession> = {
   name: 'ts/comments/stale-refs',
   description:
     'Finds comments referencing code that does not exist: @param names matching no ' +
@@ -176,9 +199,20 @@ export const staleRefs: Tool<Record<string, never>, Finding[], TsProjectSession>
     'resolve to no symbol in scope or in the project (medium), and identifier-shaped ' +
     'prose words that resolve nowhere (low). Resolution uses the type checker, so ' +
     'globals, imports, and locals all count as resolved.',
-  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  inputSchema: {
+    type: 'object',
+    properties: {
+      extraRoots: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Additional roots (sibling monorepo packages) whose declared and literal names count as existing',
+      },
+    },
+    additionalProperties: false,
+  },
   outputSchema: { type: 'array', items: { $ref: '#/definitions/finding' } },
-  run(session) {
+  run(session, input) {
     const checker = session.checker();
     const projectNames = new Set<string>();
     for (const sourceFile of session.sourceFiles()) {
@@ -186,6 +220,11 @@ export const staleRefs: Tool<Record<string, never>, Finding[], TsProjectSession>
       // String-literal vocabulary counts as existing: union tags, event
       // types, and sentinel values are what comments most often name.
       for (const name of literalVocabulary(sourceFile)) projectNames.add(name);
+    }
+    for (const root of input.extraRoots ?? []) {
+      for (const name of namesFromRoot(path.resolve(session.rootPath, root))) {
+        projectNames.add(name);
+      }
     }
 
     // Filename references resolve against real files: project sources

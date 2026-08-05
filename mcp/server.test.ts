@@ -45,6 +45,7 @@ describe('MCP adapter', () => {
       'LegacyGreeter',
       'formatSalutation',
       'legacy-utils.ts',
+      'makeOptions',
       'minuend',
     ]);
   });
