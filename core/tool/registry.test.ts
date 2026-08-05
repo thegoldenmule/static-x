@@ -8,7 +8,7 @@ function fakeTool(name: string): Tool {
     description: `fake tool ${name}`,
     inputSchema: { type: 'object' },
     outputSchema: { type: 'object' },
-    run: async () => ({}),
+    run: () => Promise.resolve({}),
   };
 }
 
