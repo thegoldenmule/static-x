@@ -1,0 +1,19 @@
+{
+  "name": "graph-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "module": "src/esm.ts",
+  "types": "dist/types-entry.d.ts",
+  "bin": {
+    "graph-cli": "src/cli.ts",
+    "graph-shim": "bin/shim.mjs"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/exp.ts"
+    },
+    "./built": "./dist/built.js",
+    "./noext": "./src/noext"
+  }
+}

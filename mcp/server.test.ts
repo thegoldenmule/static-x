@@ -27,6 +27,7 @@ describe('MCP adapter', () => {
       'ts_comments_llm-tells',
       'ts_comments_long',
       'ts_comments_stale-refs',
+      'ts_graph_dead-exports',
       'ts_refactors_rename',
     ]);
     const long = tools.find((t) => t.name === 'ts_comments_long')!;

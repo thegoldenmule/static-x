@@ -31,6 +31,7 @@ cd ~/code/my-app
 static-x ts/comments/stale-refs --project .
 static-x ts/comments/long --project . --input '{"maxLines": 20}'
 static-x ts/comments/llm-tells --project .
+static-x ts/graph/dead-exports --project .
 static-x ts/refactors/rename --project . \
   --input '{"symbol": "makeOptions", "newName": "buildOptions"}'          # dry-run
 static-x ts/refactors/rename --project . \
