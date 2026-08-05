@@ -40,3 +40,31 @@ static-x ts/refactors/rename --project . \
 Usage is `static-x <tool> --project <root> [--input '<json>']`. Running with no arguments lists the available tools. Output is JSON on stdout — findings for analysis tools, a `WorkspaceEdit` plus status for refactors — so results pipe cleanly into `jq` or an LLM. Exit codes: `0` clean, `1` findings reported, `2` usage or execution error.
 
 Each tool's README ([table here](ts/README.md)) documents its options, output shape, and what its findings mean. To use the tools from Claude Code conversationally, register the [MCP server](mcp/README.md).
+
+## Configuration
+
+Put a `static-x.json` in the analyzed project's root (the `--project` directory, not this repo). Its schema mirrors the tool paths, and it applies identically through the CLI and MCP:
+
+```json
+{
+  "ts": {
+    "comments": {
+      "stale-refs": {
+        "input": { "extraRoots": ["../sibling-package"] },
+        "ignore": ["ts_rank", "websearch_to_tsquery"],
+        "minConfidence": "medium"
+      },
+      "long": { "input": { "maxLines": 20 } }
+    }
+  }
+}
+```
+
+Per tool node:
+
+| Key | Meaning |
+| --- | --- |
+| `input` | Default tool input; fields passed explicitly via `--input` win |
+| `ignore` | Drop findings whose `data.name` matches exactly — the escape hatch for project-specific false positives (SQL identifiers in comments, spec notation, external tool names) |
+| `minSeverity` | Drop findings below `info` < `warning` < `error` |
+| `minConfidence` | Drop findings whose `data.confidence` is below `low` < `medium` < `high` (findings without a confidence pass) |
