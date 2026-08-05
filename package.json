@@ -11,11 +11,13 @@
     "typecheck": "tsc",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "sx": "tsx cli/main.ts"
+    "sx": "tsx cli/main.ts",
+    "mcp": "tsx mcp/main.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@types/node": "^26.1.2",
     "eslint": "^10.8.0",
     "husky": "^9.1.7",

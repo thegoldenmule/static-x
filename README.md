@@ -5,6 +5,7 @@ Source-code tools for LLMs, built on language servers and static analysis instea
 Each language has its own directory containing the machinery to run its language server, bind to a project on disk, and ferry tool calls, plus the tools themselves.
 
 - **[TypeScript tools](ts/README.md)** — the available tools and what they do
+- **[MCP server](mcp/README.md)** — expose the tools to Claude Code and other MCP clients
 - **[Project plan](docs/plan.md)** — architecture, tool contracts, and milestones
 
 Run a tool:
