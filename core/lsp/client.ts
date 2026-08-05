@@ -19,6 +19,7 @@ export class LspClient {
   #connection: MessageConnection;
   /** uri -> document version, for didOpen/didChange bookkeeping. */
   #openDocuments = new Map<string, number>();
+  #notificationHandlers = new Set<(method: string, params: unknown) => void>();
   #initialized = false;
   #stderr = '';
 
@@ -37,7 +38,9 @@ export class LspClient {
     // Servers may send requests we don't handle (e.g. workspace/configuration);
     // returning null keeps the session alive instead of erroring.
     this.#connection.onRequest(() => null);
-    this.#connection.onNotification(() => {});
+    this.#connection.onNotification((method, params) => {
+      for (const handler of this.#notificationHandlers) handler(method, params);
+    });
     this.#connection.listen();
   }
 
@@ -77,6 +80,36 @@ export class LspClient {
     });
     this.#openDocuments.set(uri, 1);
     return uri;
+  }
+
+  isDocumentOpen(uri: string): boolean {
+    return this.#openDocuments.has(uri);
+  }
+
+  /**
+   * Resolves with the params of the next matching server notification,
+   * or undefined after timeoutMs. Register BEFORE triggering the action
+   * that causes the notification, then await.
+   */
+  waitForNotification<P>(
+    method: string,
+    predicate: (params: P) => boolean,
+    timeoutMs: number,
+  ): Promise<P | undefined> {
+    return new Promise((resolve) => {
+      const handler = (incoming: string, params: unknown) => {
+        if (incoming !== method || !predicate(params as P)) return;
+        this.#notificationHandlers.delete(handler);
+        clearTimeout(timer);
+        resolve(params as P);
+      };
+      const timer = setTimeout(() => {
+        this.#notificationHandlers.delete(handler);
+        resolve(undefined);
+      }, timeoutMs);
+      timer.unref();
+      this.#notificationHandlers.add(handler);
+    });
   }
 
   async closeDocument(filePath: string): Promise<void> {
