@@ -13,6 +13,10 @@ export function add(a: number, b: number): number {
   return a + b;
 }
 
+/**
+ * @param minuend the number to subtract from
+ * @param b the amount to subtract
+ */
 export function subtract(a: number, b: number): number {
   // Subtract b from a and return the result.
   return a - b;
