@@ -34,7 +34,41 @@ const BARE_TOKEN = /[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\(\))?/g;
 const PROSE_STOPLIST = new Set([
   'TypeScript', 'JavaScript', 'JSDoc', 'GitHub', 'GraphQL', 'WebSocket',
   'OAuth', 'macOS', 'iOS', 'PostgreSQL', 'MongoDB', 'DevTools', 'IntelliSense',
+  'CommonMark',
 ]);
+
+/** Keywords aren't symbols, so the checker never returns them. */
+// prettier-ignore
+const TS_KEYWORDS = new Set([
+  'string', 'number', 'boolean', 'object', 'symbol', 'bigint', 'any', 'unknown',
+  'never', 'void', 'null', 'undefined', 'true', 'false', 'this', 'super', 'new',
+  'import', 'export', 'default', 'delete', 'typeof', 'instanceof', 'in', 'of',
+  'as', 'is', 'keyof', 'infer', 'satisfies', 'asserts', 'readonly', 'const',
+  'let', 'var', 'function', 'class', 'interface', 'type', 'enum', 'namespace',
+  'module', 'declare', 'abstract', 'static', 'public', 'private', 'protected',
+  'async', 'await', 'yield', 'return', 'if', 'else', 'switch', 'case', 'break',
+  'continue', 'for', 'while', 'do', 'try', 'catch', 'finally', 'throw',
+  'extends', 'implements', 'get', 'set',
+]);
+
+/**
+ * Members of the standard builtins (toISOString, sort, parse, ...).
+ * These are properties, not scope symbols, so the checker can't
+ * resolve a comment's bare `toISOString()` — reflection can.
+ */
+const BUILTIN_MEMBERS: ReadonlySet<string> = (() => {
+  const names = new Set<string>();
+  const sources: object[] = [
+    Object.prototype, Array.prototype, String.prototype, Number.prototype,
+    Boolean.prototype, Date.prototype, RegExp.prototype, Function.prototype,
+    Promise.prototype, Map.prototype, Set.prototype, Error.prototype,
+    Math, JSON, Object, Array, Reflect, console,
+  ];
+  for (const source of sources) {
+    for (const name of Object.getOwnPropertyNames(source)) names.add(name);
+  }
+  return names;
+})();
 
 function segmentsOf(raw: string): string[] {
   return raw.replace(/\(\)$/, '').split('.');
@@ -184,7 +218,11 @@ export const staleRefs: Tool<Record<string, never>, Finding[], TsProjectSession>
 
           const scopeNames = scopeNamesAt(comment.end);
           const resolves = candidate.segments.some(
-            (segment) => scopeNames.has(segment) || projectNames.has(segment),
+            (segment) =>
+              scopeNames.has(segment) ||
+              projectNames.has(segment) ||
+              TS_KEYWORDS.has(segment) ||
+              BUILTIN_MEMBERS.has(segment),
           );
           if (resolves) continue;
 
