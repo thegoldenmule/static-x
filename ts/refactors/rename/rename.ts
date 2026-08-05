@@ -8,6 +8,7 @@ import type {
   TextEdit,
 } from '../../../core/tool/index.js';
 import { applyWorkspaceEdit, previewWorkspaceEdit } from '../../../core/edits/index.js';
+import { isDeclarationSite } from '../../ast/declarations.js';
 import type { TsProjectSession } from '../../project/index.js';
 
 export interface RenameInput {
@@ -49,30 +50,6 @@ const RESERVED = new Set([
 
 function isValidIdentifier(name: string): boolean {
   return IDENTIFIER.test(name) && !RESERVED.has(name);
-}
-
-/**
- * Original declaration sites only — not usages, and not import/export
- * specifiers (those are aliases of a symbol declared elsewhere).
- */
-function isDeclarationSite(node: ts.Node): node is ts.NamedDeclaration {
-  return (
-    ts.isFunctionDeclaration(node) ||
-    ts.isClassDeclaration(node) ||
-    ts.isInterfaceDeclaration(node) ||
-    ts.isTypeAliasDeclaration(node) ||
-    ts.isEnumDeclaration(node) ||
-    ts.isEnumMember(node) ||
-    ts.isVariableDeclaration(node) ||
-    ts.isParameter(node) ||
-    ts.isPropertySignature(node) ||
-    ts.isPropertyDeclaration(node) ||
-    ts.isMethodDeclaration(node) ||
-    ts.isMethodSignature(node) ||
-    ts.isGetAccessorDeclaration(node) ||
-    ts.isSetAccessorDeclaration(node) ||
-    ts.isModuleDeclaration(node)
-  );
 }
 
 /** Find declarations named `symbol` across the project. */
