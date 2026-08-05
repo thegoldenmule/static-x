@@ -34,6 +34,14 @@ describe('extractCandidates', () => {
     expect(found).toEqual([]);
   });
 
+  it('extracts hyphenated filenames whole, never as fragments', () => {
+    const found = extractCandidates('// covered by ref-set-sugar.test.ts and `api.ts` here');
+    expect(found.map((c) => [c.raw, c.isFile ?? false])).toEqual([
+      ['api.ts', true],
+      ['ref-set-sugar.test.ts', true],
+    ]);
+  });
+
   it('reports offsets that point at the reference', () => {
     const comment = '// see `staleThing` here';
     const [candidate] = extractCandidates(comment);
@@ -55,6 +63,7 @@ describe('ts/comments/stale-refs on the fixture project', () => {
     expect(summary).toEqual([
       'greeter.ts:comment.stale-ref:LegacyGreeter',
       'greeter.ts:comment.stale-ref:formatSalutation',
+      'literals.ts:comment.stale-ref:legacy-utils.ts',
       'math.ts:comment.stale-param:minuend',
     ]);
   });
@@ -66,11 +75,15 @@ describe('ts/comments/stale-refs on the fixture project', () => {
     expect(findings.filter((f: Finding) => f.file.endsWith('notes.ts'))).toEqual([]);
   });
 
-  it('resolves string-literal vocabulary and property keys', async () => {
+  it('resolves string-literal vocabulary, property keys, and real files', async () => {
     // literals.ts references `addWidget` (exists only as a union tag
-    // string) and removeWidget (exists only as an object-literal key).
+    // string), removeWidget (object-literal key), keywords, builtins,
+    // and math.ts (a real file) — only the missing legacy-utils.ts
+    // survives resolution.
     const findings = await staleRefs.run(session, {});
-    expect(findings.filter((f: Finding) => f.file.endsWith('literals.ts'))).toEqual([]);
+    const inFile = findings.filter((f: Finding) => f.file.endsWith('literals.ts'));
+    expect(inFile.map((f: Finding) => f.data?.name)).toEqual(['legacy-utils.ts']);
+    expect(inFile[0]?.data).toMatchObject({ kind: 'file' });
   });
 
   it('reports precise ranges and confidence levels', async () => {

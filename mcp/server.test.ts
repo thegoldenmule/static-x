@@ -44,6 +44,7 @@ describe('MCP adapter', () => {
     expect(findings.map((f) => f.data?.name).sort()).toEqual([
       'LegacyGreeter',
       'formatSalutation',
+      'legacy-utils.ts',
       'minuend',
     ]);
   });

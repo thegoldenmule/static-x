@@ -1,3 +1,4 @@
+import path from 'node:path';
 import ts from 'typescript';
 import type { Finding, Tool } from '../../../core/tool/index.js';
 import type { TsProjectSession } from '../../project/index.js';
@@ -21,6 +22,8 @@ interface Candidate {
   /** Offset of raw within the comment text. */
   offset: number;
   source: Source;
+  /** A filename reference ("ref-set-sugar.test.ts"), resolved against files. */
+  isFile?: boolean;
 }
 
 const CHAIN = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\(\))?$/;
@@ -29,6 +32,10 @@ const LINK_TAG = /\{@link(?:code|plain)?\s+([^}\s|]+)[^}]*\}/g;
 const SEE_TAG = /@see\s+(?!\{@)([\w$.]+(?:\(\))?)/g;
 const PARAM_TAG = /@param\s+(?:\{[^}]*\}\s+)?\[?([\w$.]+)/g;
 const BARE_TOKEN = /[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\(\))?/g;
+/** Filenames allow hyphens, which identifier chains never do. */
+const SOURCE_EXTENSIONS = 'tsx?|[mc]?js|jsx|json|md';
+const FILE_NAME = new RegExp(`^[\\w$][\\w$.-]*\\.(?:${SOURCE_EXTENSIONS})$`);
+const FILE_REF = new RegExp(`[\\w$][\\w$.-]*\\.(?:${SOURCE_EXTENSIONS})\\b`, 'g');
 
 /** Well-known prose words that are identifier-shaped but not code. */
 const PROSE_STOPLIST = new Set([
@@ -102,9 +109,14 @@ export function extractCandidates(commentText: string): Candidate[] {
     for (const match of commentText.matchAll(regex)) {
       working = blank(working, match.index, match[0].length);
       const raw = match[1];
-      if (raw === undefined || !CHAIN.test(raw)) continue;
-      if (requireCodeShape && !looksLikeCode(raw)) continue;
+      if (raw === undefined) continue;
       const offset = match.index + match[0].indexOf(raw);
+      if (source !== 'param-tag' && FILE_NAME.test(raw)) {
+        candidates.push({ raw, segments: [raw], offset, source, isFile: true });
+        continue;
+      }
+      if (!CHAIN.test(raw)) continue;
+      if (requireCodeShape && !looksLikeCode(raw)) continue;
       candidates.push({ raw, segments: segmentsOf(raw), offset, source });
     }
   };
@@ -113,6 +125,14 @@ export function extractCandidates(commentText: string): Candidate[] {
   take(LINK_TAG, 'jsdoc-tag', true);
   take(SEE_TAG, 'jsdoc-tag', true);
   take(CODE_SPAN, 'code-span', false);
+
+  // Filename references first — they may contain hyphens, which the
+  // bare-token pass would split into misleading fragments.
+  for (const match of working.matchAll(FILE_REF)) {
+    const raw = match[0];
+    working = blank(working, match.index, raw.length);
+    candidates.push({ raw, segments: [raw], offset: match.index, source: 'bare', isFile: true });
+  }
 
   for (const match of working.matchAll(BARE_TOKEN)) {
     const raw = match[0];
@@ -168,6 +188,27 @@ export const staleRefs: Tool<Record<string, never>, Finding[], TsProjectSession>
       for (const name of literalVocabulary(sourceFile)) projectNames.add(name);
     }
 
+    // Filename references resolve against real files: project sources
+    // first, then a one-time listing of the whole project root.
+    let rootListing: Set<string> | undefined;
+    const projectBasenames = new Set(
+      session.sourceFiles().map((sf) => path.basename(sf.fileName)),
+    );
+    const fileExists = (name: string): boolean => {
+      if (projectBasenames.has(name)) return true;
+      rootListing ??= new Set(
+        ts.sys
+          .readDirectory(
+            session.rootPath,
+            ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.md'],
+            ['**/node_modules'],
+            undefined,
+          )
+          .map((file) => path.basename(file)),
+      );
+      return rootListing.has(name);
+    };
+
     const findings: Finding[] = [];
     for (const sourceFile of session.sourceFiles()) {
       const text = sourceFile.getFullText();
@@ -213,6 +254,19 @@ export const staleRefs: Tool<Record<string, never>, Finding[], TsProjectSession>
                 data: { name: candidate.raw, source: candidate.source, confidence: 'high' },
               });
             }
+            continue;
+          }
+
+          if (candidate.isFile) {
+            if (fileExists(candidate.raw)) continue;
+            findings.push({
+              file: sourceFile.fileName,
+              range,
+              code: 'comment.stale-ref',
+              message: `Comment references "${candidate.raw}", which does not match any file in the project.`,
+              severity: 'warning',
+              data: { name: candidate.raw, source: candidate.source, confidence: 'medium', kind: 'file' },
+            });
             continue;
           }
 
