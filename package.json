@@ -10,7 +10,8 @@
     "prepare": "husky",
     "typecheck": "tsc",
     "test:watch": "vitest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "sx": "tsx cli/main.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.1",
