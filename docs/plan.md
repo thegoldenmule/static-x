@@ -110,14 +110,14 @@ Two thin adapters over the same registry:
 
 Tool descriptions and schemas are written for the LLM as the audience — they state what the tool checks, what a finding means, and what a sensible next action is.
 
-## Milestones
+## Milestones (all complete)
 
-1. **Scaffold** — package.json, tsconfig, vitest, lint; `core/tool` interfaces; empty registry; one fixture project under `fixtures/basic-ts/`.
-2. **TS runtime** — `ts/server` spawn + handshake, `core/lsp` client, `ts/project` session with both views, `ts/ferry` dispatch. Proven by an integration test that opens the fixture and gets hover/definition through LSP.
-3. **First analysis tool** — `ts/comments/long` end-to-end through the ferry and CLI. Smallest tool; validates the whole pipeline.
-4. **Rename** — `ts/refactors/rename` with dry-run and apply modes, collision guard, tests covering cross-file renames and shorthand-property edge cases.
-5. **Semantic comments** — `ts/comments/stale-refs` (symbol index, extractors, resolution tiers), then `ts/comments/llm-tells` with its pattern data file.
-6. **MCP adapter** — expose the registry, session caching, README with Claude Code registration instructions.
+1. ✅ **Scaffold** — package.json, tsconfig, vitest, lint; `core/tool` interfaces; empty registry; one fixture project under `fixtures/basic-ts/`.
+2. ✅ **TS runtime** — `ts/server` spawn + handshake, `core/lsp` client, `ts/project` session with both views, `ts/ferry` dispatch. Proven by an integration test that opens the fixture and gets hover/definition through LSP.
+3. ✅ **First analysis tool** — `ts/comments/long` end-to-end through the ferry and CLI. Smallest tool; validates the whole pipeline.
+4. ✅ **Rename** — `ts/refactors/rename` with dry-run and apply modes, collision guard, tests covering cross-file renames and shorthand-property edge cases.
+5. ✅ **Semantic comments** — `ts/comments/stale-refs` (symbol index, extractors, resolution tiers), then `ts/comments/llm-tells` with its pattern data file.
+6. ✅ **MCP adapter** — expose the registry, session caching, README with Claude Code registration instructions.
 
 Each milestone lands with tests against fixture projects — fixtures include deliberately stale comments, LLM-flavored comments, and rename edge cases, so tool quality is measured, not assumed.
 
