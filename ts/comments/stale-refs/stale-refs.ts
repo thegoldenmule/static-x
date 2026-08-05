@@ -1,7 +1,7 @@
 import ts from 'typescript';
 import type { Finding, Tool } from '../../../core/tool/index.js';
 import type { TsProjectSession } from '../../project/index.js';
-import { declaredNames, nodeAt } from '../../ast/declarations.js';
+import { declaredNames, literalVocabulary, nodeAt } from '../../ast/declarations.js';
 import { collectCommentRanges } from '../collect.js';
 
 /**
@@ -129,6 +129,9 @@ export const staleRefs: Tool<Record<string, never>, Finding[], TsProjectSession>
     const projectNames = new Set<string>();
     for (const sourceFile of session.sourceFiles()) {
       for (const name of declaredNames(sourceFile)) projectNames.add(name);
+      // String-literal vocabulary counts as existing: union tags, event
+      // types, and sentinel values are what comments most often name.
+      for (const name of literalVocabulary(sourceFile)) projectNames.add(name);
     }
 
     const findings: Finding[] = [];

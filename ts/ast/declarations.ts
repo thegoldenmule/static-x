@@ -37,6 +37,38 @@ export function declaredNames(sourceFile: ts.SourceFile): Set<string> {
   return names;
 }
 
+const IDENTIFIER_ISH = /^[$A-Za-z_][\w$-]*$/;
+
+/**
+ * The file's literal vocabulary: names that exist as values rather
+ * than identifier declarations — string-literal types and values
+ * (discriminated-union tags like `op: "addElement"`, event-type
+ * strings, reserved sentinels like `"$ordinal"`) and object-literal
+ * property keys. Comments referencing these are NOT stale, but no
+ * identifier declaration or scope symbol will ever resolve them.
+ */
+export function literalVocabulary(sourceFile: ts.SourceFile): Set<string> {
+  const names = new Set<string>();
+  const visit = (node: ts.Node) => {
+    if (
+      (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
+      node.text.length > 1 &&
+      IDENTIFIER_ISH.test(node.text)
+    ) {
+      names.add(node.text);
+    }
+    if (
+      (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) &&
+      ts.isIdentifier(node.name)
+    ) {
+      names.add(node.name.text);
+    }
+    node.forEachChild(visit);
+  };
+  visit(sourceFile);
+  return names;
+}
+
 /** The deepest node whose full range contains `position`. */
 export function nodeAt(sourceFile: ts.SourceFile, position: number): ts.Node {
   let best: ts.Node = sourceFile;

@@ -55,7 +55,13 @@ describe('TsProjectSession', () => {
 
   it('resolves symbols through the compiler view', () => {
     const files = session.sourceFiles().map((sf) => path.basename(sf.fileName));
-    expect(files.sort()).toEqual(['greeter.ts', 'index.ts', 'math.ts', 'notes.ts']);
+    expect(files.sort()).toEqual([
+      'greeter.ts',
+      'index.ts',
+      'literals.ts',
+      'math.ts',
+      'notes.ts',
+    ]);
 
     const greeter = session
       .program()

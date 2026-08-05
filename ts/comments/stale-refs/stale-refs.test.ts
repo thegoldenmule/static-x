@@ -66,6 +66,13 @@ describe('ts/comments/stale-refs on the fixture project', () => {
     expect(findings.filter((f: Finding) => f.file.endsWith('notes.ts'))).toEqual([]);
   });
 
+  it('resolves string-literal vocabulary and property keys', async () => {
+    // literals.ts references `addWidget` (exists only as a union tag
+    // string) and removeWidget (exists only as an object-literal key).
+    const findings = await staleRefs.run(session, {});
+    expect(findings.filter((f: Finding) => f.file.endsWith('literals.ts'))).toEqual([]);
+  });
+
   it('reports precise ranges and confidence levels', async () => {
     const findings = await staleRefs.run(session, {});
     const param = findings.find((f: Finding) => f.code === 'comment.stale-param');
