@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+# static-x pre-push hook: run whole-project tools before code leaves the
+# machine. No --files here on purpose — an import cycle or a dead export
+# is a property of the project as a whole, and the file that introduced
+# it is often not the file that reports it. Push is the right moment to
+# pay for the full analysis; commit is not.
+#
+# Install:
+#   cp hooks/git/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+#   # husky: cp hooks/git/pre-push .husky/pre-push
+#
+# Configure with environment variables:
+#   STATIC_X_PUSH_TOOLS  space-separated tool names (default: ts/graph/cycles)
+#   STATIC_X_PROJECT     project root passed to --project (default: .)
+#   STATIC_X_BIN         the static-x executable (default: static-x on PATH)
+#
+# For the changed-files-only variant that belongs on commit, see
+# ../git/pre-commit.
+
+set -u
+
+tools="${STATIC_X_PUSH_TOOLS:-ts/graph/cycles}"
+project="${STATIC_X_PROJECT:-.}"
+bin="${STATIC_X_BIN:-static-x}"
+
+if ! command -v "$bin" >/dev/null 2>&1; then
+  echo "pre-push: $bin is not on PATH — skipping static-x checks" >&2
+  exit 0
+fi
+
+failed=0
+for tool in $tools; do
+  output=$("$bin" "$tool" --project "$project" --format text 2>&1)
+  status=$?
+
+  case "$status" in
+    0) ;;
+    1)
+      printf '%s\n\n' "$output" >&2
+      failed=1
+      ;;
+    *)
+      printf 'pre-push: %s could not run (exit %s):\n%s\n\n' "$tool" "$status" "$output" >&2
+      ;;
+  esac
+done
+
+if [ "$failed" -ne 0 ]; then
+  echo 'Push blocked by static-x. Fix the findings above, tune the tool in' >&2
+  echo 'static-x.json, or bypass this once with `git push --no-verify`.' >&2
+  exit 1
+fi
+
+exit 0

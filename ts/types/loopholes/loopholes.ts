@@ -303,7 +303,7 @@ export const typeLoopholes: Tool<LoopholesInput, Finding[], TsProjectSession> = 
   run(session, input) {
     return Promise.resolve(
       session
-        .sourceFiles()
+        .targetFiles()
         .flatMap((sourceFile) => findLoopholesInFile(sourceFile, input))
         .sort(
           (a, b) =>

@@ -79,7 +79,7 @@ export const longComments: Tool<LongCommentsInput, Finding[], TsProjectSession> 
   outputSchema: FINDINGS_ARRAY_SCHEMA,
   run(session, input) {
     return Promise.resolve(
-      session.sourceFiles().flatMap((sourceFile) => findLongCommentsInFile(sourceFile, input)),
+      session.targetFiles().flatMap((sourceFile) => findLongCommentsInFile(sourceFile, input)),
     );
   },
 };

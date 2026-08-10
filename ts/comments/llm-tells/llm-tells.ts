@@ -133,7 +133,7 @@ export const llmTells: Tool<LlmTellsInput, Finding[], TsProjectSession> = {
   outputSchema: FINDINGS_ARRAY_SCHEMA,
   run(session, input) {
     return Promise.resolve(
-      session.sourceFiles().flatMap((sourceFile) => findLlmTellsInFile(sourceFile, input)),
+      session.targetFiles().flatMap((sourceFile) => findLlmTellsInFile(sourceFile, input)),
     );
   },
 };

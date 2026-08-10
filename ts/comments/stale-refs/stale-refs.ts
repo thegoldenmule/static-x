@@ -249,8 +249,11 @@ export const staleRefs: Tool<StaleRefsInput, Finding[], TsProjectSession> = {
       return rootListing.has(name);
     };
 
+    // Reported per target file, but resolved against the whole-project
+    // index built above: a comment in one file names symbols from all
+    // the others, so a narrowed corpus would invent stale references.
     const findings: Finding[] = [];
-    for (const sourceFile of session.sourceFiles()) {
+    for (const sourceFile of session.targetFiles()) {
       const text = sourceFile.getFullText();
       const owners = paramOwners(sourceFile);
       const scopeCache = new Map<ts.Node, Set<string>>();

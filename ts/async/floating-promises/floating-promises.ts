@@ -255,7 +255,7 @@ export const floatingPromises: Tool<FloatingPromisesInput, Finding[], TsProjectS
     const checker = session.checker();
     return Promise.resolve(
       session
-        .sourceFiles()
+        .targetFiles()
         .flatMap((sourceFile) => findFloatingPromisesInFile(sourceFile, checker, input))
         .sort(
           (a, b) =>

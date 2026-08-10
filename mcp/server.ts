@@ -3,15 +3,18 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { FILES_SCHEMA, supportsFileScope } from '../core/files/index.js';
 import type { JsonSchema, ToolRegistry } from '../core/tool/index.js';
 import { TsFerry } from '../ts/ferry/ferry.js';
 
 /**
  * MCP adapter over the tool registry. Tool names swap '/' for '_'
  * (MCP forbids slashes): ts/comments/long -> ts_comments_long. Every
- * MCP tool takes the underlying tool's input plus projectRoot; the
- * ferry caches one session per root, so repeated calls in a
- * conversation reuse the language server and typechecked program.
+ * MCP tool takes the underlying tool's input plus projectRoot, and
+ * analysis tools also take `files` to report on a subset of the project
+ * ("check what I just changed"); the ferry caches one session per root,
+ * so repeated calls in a conversation reuse the language server and
+ * typechecked program.
  *
  * Results are typed: MCP requires structuredContent to be a JSON
  * object, while our tools return arrays (Finding[]) or objects, so the
@@ -43,6 +46,7 @@ export function createMcpServer(registry: ToolRegistry): { server: Server; ferry
               type: 'string',
               description: 'Absolute path of the project to analyze (its root or any dir containing tsconfig.json)',
             },
+            ...(supportsFileScope(tool) ? { files: FILES_SCHEMA } : {}),
             ...(schema.properties ?? {}),
           },
           required: ['projectRoot', ...(schema.required ?? [])],

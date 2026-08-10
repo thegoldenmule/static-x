@@ -391,8 +391,7 @@ export const deadExports: Tool<DeadExportsInput, Finding[], TsProjectSession> = 
     const graph = buildImportGraph(session);
     const checker = session.checker();
     const rootPath = session.rootPath;
-    const files = session.sourceFiles();
-    const projectFiles = new Set(files.map((sf) => path.resolve(sf.fileName)));
+    const projectFiles = new Set(session.sourceFiles().map((sf) => path.resolve(sf.fileName)));
     const { entryFiles, packageNames } = collectPackageEntryPoints(rootPath, projectFiles);
     const entryGlobs = (input.entryPoints ?? []).map(translateGlob);
     const extra =
@@ -400,8 +399,11 @@ export const deadExports: Tool<DeadExportsInput, Finding[], TsProjectSession> = 
         ? scanExtraRoots(input.extraRoots, rootPath, packageNames)
         : undefined;
 
+    // Reported per target file; liveness still comes from the graph
+    // over every project file, so a scoped run answers "is this export
+    // dead?" with the whole project's imports, not the scope's.
     const findings: Finding[] = [];
-    for (const sourceFile of files) {
+    for (const sourceFile of session.targetFiles()) {
       const file = path.resolve(sourceFile.fileName);
       const relative = toProjectRelative(rootPath, file);
       const isEntry =
