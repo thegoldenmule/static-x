@@ -9,10 +9,12 @@ large commit at the end is neither, and it loses the record of what was tried.
 
 This does not need asking about each time. Land work in commits by default.
 
+- **Commit to `main`.** Don't create a branch, and don't ask whether to — `main` is the working line
+  here.
 - Conventional Commits, enforced by commitlint: `type(scope): subject`.
-- Branch first if on `main`.
 - Say *why* in the body, not what the diff already shows — a defect's mechanism, a measurement that
   settled a decision, an option rejected and the reason.
+- Typecheck, lint and tests pass before each commit, so every commit on `main` is a working one.
 
 ## Verify against the compiler, don't reason about it
 
