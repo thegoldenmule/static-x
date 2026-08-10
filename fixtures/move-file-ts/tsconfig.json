@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "paths": {
+      "@cli": ["./src/cli.ts"],
+      "@widgets/*": ["./src/widgets/*"]
+    }
+  },
+  "include": ["src"]
+}

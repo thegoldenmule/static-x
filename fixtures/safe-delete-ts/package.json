@@ -1,0 +1,8 @@
+{
+  "name": "safe-delete-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "bin": {
+    "safe-delete-cli": "src/cli.ts"
+  }
+}

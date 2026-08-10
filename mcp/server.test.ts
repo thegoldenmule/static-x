@@ -32,12 +32,42 @@ describe('MCP adapter', () => {
       'ts_dupes_functions',
       'ts_graph_cycles',
       'ts_graph_dead-exports',
+      'ts_refactors_inline-parameter',
+      'ts_refactors_make-readonly',
+      'ts_refactors_move-file',
+      'ts_refactors_move-symbol',
       'ts_refactors_rename',
+      'ts_refactors_safe-delete',
       'ts_types_loopholes',
     ]);
     const long = tools.find((t) => t.name === 'ts_comments_long')!;
     expect(long.inputSchema.required).toContain('projectRoot');
     expect(long.inputSchema.properties).toHaveProperty('maxLines');
+  });
+
+  it('offers files on analysis tools and withholds it from refactors', async () => {
+    const { tools } = await client.listTools();
+    const long = tools.find((t) => t.name === 'ts_comments_long')!;
+    expect(long.inputSchema.properties).toHaveProperty('files');
+    expect(long.inputSchema.required).not.toContain('files');
+
+    // Every refactor rewrites code project-wide, so a partial file list
+    // would mean a partial refactor. None of them may offer `files`.
+    const refactors = tools.filter((t) => t.name.startsWith('ts_refactors_'));
+    expect(refactors.length).toBeGreaterThan(1);
+    for (const refactor of refactors) {
+      expect(refactor.inputSchema.properties, refactor.name).not.toHaveProperty('files');
+    }
+  });
+
+  it('scopes a call to the files it is given', async () => {
+    const result = await client.callTool({
+      name: 'ts_comments_stale-refs',
+      arguments: { projectRoot: FIXTURE, files: ['src/literals.ts'] },
+    });
+    const content = result.content as { type: string; text: string }[];
+    const findings = JSON.parse(content[0]!.text) as { data?: { name?: string } }[];
+    expect(findings.map((f) => f.data?.name).sort()).toEqual(['legacy-utils.ts', 'makeOptions']);
   });
 
   it('advertises each tool output wrapped in a result-object schema', async () => {
