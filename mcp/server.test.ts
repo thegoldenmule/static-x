@@ -32,6 +32,7 @@ describe('MCP adapter', () => {
       'ts_dupes_functions',
       'ts_graph_cycles',
       'ts_graph_dead-exports',
+      'ts_refactors_extract',
       'ts_refactors_inline-parameter',
       'ts_refactors_make-readonly',
       'ts_refactors_move-file',
