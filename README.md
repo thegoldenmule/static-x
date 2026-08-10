@@ -37,6 +37,7 @@ static-x ts/comments/stale-refs --project .
 static-x ts/dupes/functions --project .
 static-x ts/graph/cycles --project .
 static-x ts/graph/dead-exports --project .
+static-x ts/refactors/change-signature --project . --input '{"symbol": "makeOptions"}'
 static-x ts/refactors/extract --project . \
   --input '{"file": "src/cart.ts", "select": "line.qty * line.unit"}'   # list scopes
 static-x ts/refactors/inline-parameter --project . \
