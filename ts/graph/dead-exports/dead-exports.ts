@@ -2,6 +2,7 @@ import path from 'node:path';
 import ts from 'typescript';
 import type { Finding, Range, Tool } from '../../../core/tool/index.js';
 import type { TsProjectSession } from '../../project/index.js';
+import { isTestFile } from '../../project/index.js';
 import { buildImportGraph, collectModuleRefs } from '../import-graph.js';
 
 /**
@@ -38,7 +39,6 @@ const FRAMEWORK_STEMS = new Set([
   'global-error',
 ]);
 
-const TEST_FILE = /\.(?:test|spec)\.[cm]?tsx?$/;
 const REGEX_SPECIAL = /[.+?^${}()|[\]\\]/;
 
 /** package.json target extension -> the source extensions it may compile from. */
@@ -98,11 +98,6 @@ export function isFrameworkEntry(relativePath: string): boolean {
   return (
     stem !== undefined && FRAMEWORK_STEMS.has(stem) && /(?:^|\/)(?:app|pages)\//.test(posix)
   );
-}
-
-/** Test files: their exports are loaded by the runner, not imported. */
-export function isTestFile(fileName: string): boolean {
-  return TEST_FILE.test(fileName);
 }
 
 /** Every string reachable in a package.json "exports" value (conditions, subpaths, arrays). */

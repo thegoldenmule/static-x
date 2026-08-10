@@ -9,7 +9,6 @@ import {
   deadExports,
   findDeadExportsInFile,
   isFrameworkEntry,
-  isTestFile,
   sourceCandidates,
   translateGlob,
 } from './dead-exports.js';
@@ -134,13 +133,6 @@ describe('entry-point and test-file classification', () => {
     expect(isFrameworkEntry('apps/web/.next/types/link.ts')).toBe(true);
     expect(isFrameworkEntry('src/app/util.ts')).toBe(false);
     expect(isFrameworkEntry('shapp/page.ts')).toBe(false);
-  });
-
-  it('recognizes test files', () => {
-    expect(isTestFile('/p/a.test.ts')).toBe(true);
-    expect(isTestFile('/p/a.spec.tsx')).toBe(true);
-    expect(isTestFile('/p/a.integration.test.ts')).toBe(true);
-    expect(isTestFile('/p/attest.ts')).toBe(false);
   });
 });
 
