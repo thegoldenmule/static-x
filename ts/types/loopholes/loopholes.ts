@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import type { Finding, Range, Severity, Tool } from '../../../core/tool/index.js';
+import { truncateFlat } from '../../ast/truncate.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { isTestFile } from '../../project/index.js';
 import { collectCommentRanges } from '../../comments/collect.js';
@@ -34,17 +35,8 @@ const MULTI_LINE_DIRECTIVE = /^(?:\/|\*)*\s*(@ts-(?:expect-error|ignore))/;
 
 const MAX_NAME_CHARS = 40;
 
-/**
- * Ignore-list names must be typeable in static-x.json: whitespace runs
- * collapse (inline object types span lines) and the cut never splits a
- * surrogate pair — a lone high surrogate is ill-formed Unicode that
- * strict encoders reject and no user could type.
- */
 function truncateName(text: string): string {
-  const flat = text.replace(/\s+/g, ' ');
-  if (flat.length <= MAX_NAME_CHARS) return flat;
-  const cut = flat.slice(0, MAX_NAME_CHARS);
-  return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
+  return truncateFlat(text, MAX_NAME_CHARS);
 }
 
 /** Where an `any` annotation sits; parameters and returns are contagion points. */
