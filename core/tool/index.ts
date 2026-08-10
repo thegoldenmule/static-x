@@ -4,6 +4,7 @@ export type {
   Severity,
   Finding,
   TextEdit,
+  FileOperation,
   WorkspaceEdit,
   ProjectSession,
   JsonSchema,

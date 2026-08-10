@@ -1,1 +1,6 @@
-export { applyTextEdits, previewWorkspaceEdit, applyWorkspaceEdit } from './apply.js';
+export {
+  applyTextEdits,
+  previewWorkspaceEdit,
+  applyWorkspaceEdit,
+  type AppliedEdit,
+} from './apply.js';

@@ -36,10 +36,26 @@ export interface TextEdit {
   newText: string;
 }
 
+/**
+ * A change to the file tree itself, which text edits cannot express.
+ * Mirrors LSP's CreateFile/RenameFile/DeleteFile resource operations.
+ */
+export type FileOperation =
+  | { kind: 'create'; file: string; text?: string }
+  | { kind: 'rename'; oldFile: string; newFile: string }
+  | { kind: 'delete'; file: string };
+
 /** The canonical output shape for mutating tools (LSP-compatible). */
 export interface WorkspaceEdit {
   /** Map of absolute file path to edits within that file. */
   changes: Record<string, TextEdit[]>;
+  /**
+   * File-tree changes accompanying the text edits. Order within the
+   * array is not significant: creates happen first and deletes last,
+   * with text edits applied to post-rename paths in between — see
+   * applyWorkspaceEdit.
+   */
+  fileOps?: FileOperation[];
 }
 
 /**

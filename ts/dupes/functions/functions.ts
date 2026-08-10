@@ -5,6 +5,7 @@ import type { Finding, Range, Tool } from '../../../core/tool/index.js';
 import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { isTestFile, toProjectRelative } from '../../project/index.js';
+import { shapeKey, tokenKey } from '../../ast/structural.js';
 
 /**
  * Finds structurally identical function bodies (dupes.function) by
@@ -86,58 +87,6 @@ function functionName(
 }
 
 /**
- * The structural key: every SyntaxKind in the body subtree, preorder,
- * each paired with its child count. The child count makes the key an
- * injective encoding of the tree — flat kind sequences alone cannot
- * tell nesting from siblings, e.g. `f(g(x), y)` from `f(g(x, y))`.
- * JSDoc subtrees are skipped so documentation never changes the shape.
- */
-function bodyShape(body: ts.Node): { key: string; nodes: number } {
-  const entries: string[] = [];
-  const visit = (node: ts.Node): number => {
-    if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) {
-      return 0;
-    }
-    const slot = entries.length;
-    entries.push('');
-    let children = 0;
-    ts.forEachChild(node, (child) => {
-      children += visit(child);
-    });
-    entries[slot] = `${String(node.kind)}:${String(children)}`;
-    return 1;
-  };
-  visit(body);
-  return { key: entries.join(','), nodes: entries.length };
-}
-
-/**
- * The body reduced to its tokens, joined. Tokens carry string and
- * template contents verbatim while comments and layout are trivia and
- * drop out, so equality means the bodies compile identically. Raw-text
- * whitespace collapsing would get both directions wrong: it conflates
- * literals that differ only in inner whitespace and lets a comment
- * break exactness.
- */
-function normalizedBodyText(body: ts.Node, sourceFile: ts.SourceFile): string {
-  const tokens: string[] = [];
-  const visit = (node: ts.Node): void => {
-    if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) {
-      return;
-    }
-    const children = node.getChildren(sourceFile);
-    if (children.length === 0) {
-      const text = node.getText(sourceFile);
-      if (text.length > 0) tokens.push(text);
-      return;
-    }
-    for (const child of children) visit(child);
-  };
-  visit(body);
-  return tokens.join(' ');
-}
-
-/**
  * Every function declaration, function expression, arrow function, and
  * method in the file whose body subtree has at least `minNodes` nodes,
  * reduced to its comparable shape. Nested functions are collected in
@@ -154,7 +103,7 @@ export function collectFunctionShapes(
   const shapes: FunctionShape[] = [];
   const visit = (node: ts.Node, parent: ts.Node | undefined): void => {
     if (isSupportedFunction(node) && node.body !== undefined) {
-      const { key, nodes } = bodyShape(node.body);
+      const { key, nodes } = shapeKey(node.body);
       if (nodes >= minNodes) {
         shapes.push({
           key,
@@ -164,7 +113,7 @@ export function collectFunctionShapes(
             end: sourceFile.getLineAndCharacterOfPosition(node.getEnd()),
           },
           nodes,
-          normalizedText: normalizedBodyText(node.body, sourceFile),
+          normalizedText: tokenKey(node.body, sourceFile),
         });
       }
     }
