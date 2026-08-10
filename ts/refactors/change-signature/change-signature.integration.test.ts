@@ -42,14 +42,22 @@ describe('ts/refactors/change-signature', () => {
     ]);
   });
 
-  it('refuses a partial rewrite rather than shipping it', { timeout: 30_000 }, async () => {
+  it('rewrites a call TypeScript drops, rather than refusing over its bug', { timeout: 30_000 }, async () => {
     // twin-one.ts and twin-two.ts are byte-identical, so their calls sit
     // at the same offset. TypeScript deduplicates call sites by position
-    // without comparing files, rewrites one and drops the other, and
-    // reports nothing — the caller would be left calling positionally.
-    await expect(changeSignature.run(session, { symbol: 'twinned' })).rejects.toThrow(
-      /not every call.*twin-two\.ts/s,
-    );
+    // without comparing files, rewrites one, drops the other, and
+    // reports nothing — leaving that caller calling positionally.
+    const result = await changeSignature.run(session, { symbol: 'twinned' });
+
+    expect(result.newDiagnostics).toEqual([]);
+    for (const twin of ['twin-one.ts', 'twin-two.ts']) {
+      expect(await preview(result.edit, file(twin)), twin).toContain(
+        "twinned({ a: 'same', b: 9, c: true })",
+      );
+    }
+    // The repair is reported: the caller learns the engine skipped a
+    // call, rather than the tool quietly covering for it.
+    expect(result.warnings.join('\n')).toMatch(/skipped the call.*twin-two\.ts/s);
   });
 
   it('refuses when the function is handed out as a value', { timeout: 30_000 }, async () => {
@@ -71,6 +79,33 @@ describe('ts/refactors/change-signature', () => {
     await expect(changeSignature.run(session, { symbol: 'nothingHere' })).rejects.toThrow(
       /No declaration named/,
     );
+  });
+
+  it('applies a repaired conversion, leaving the project compiling', { timeout: 30_000 }, async () => {
+    await withProjectCopy(FIXTURE, async (copy, root) => {
+      const result = await changeSignature.run(copy, { symbol: 'twinned', apply: true });
+      expect(result.applied).toBe(true);
+
+      for (const twin of ['twin-one.ts', 'twin-two.ts']) {
+        expect(await readFile(path.join(root, 'src', twin), 'utf8'), twin).toContain(
+          "twinned({ a: 'same', b: 9, c: true })",
+        );
+      }
+
+      // The repair has to survive a real compile, not just the guard:
+      // an authored edit that merely looked right would fail here.
+      const reopened = TsProjectSession.open(root);
+      try {
+        expect(
+          reopened
+            .program()
+            .getSemanticDiagnostics()
+            .map((diagnostic) => diagnostic.messageText),
+        ).toEqual([]);
+      } finally {
+        await reopened.dispose();
+      }
+    });
   });
 
   it('applies the conversion, leaving the project compiling', { timeout: 30_000 }, async () => {

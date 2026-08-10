@@ -1,7 +1,7 @@
 import path from 'node:path';
 import ts from 'typescript';
 import { applyWorkspaceEdit } from '../../../core/edits/index.js';
-import type { Tool } from '../../../core/tool/index.js';
+import type { Tool, WorkspaceEdit } from '../../../core/tool/index.js';
 import { memberHierarchy } from '../../ast/hierarchy.js';
 import { declarationAt, resolveTarget, SYMBOL_TARGET_PROPERTIES } from '../../ast/targets.js';
 import type { TsProjectSession } from '../../project/index.js';
@@ -10,9 +10,9 @@ import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../outp
 import { applicableActions, runRefactor } from '../refactor-action.js';
 import {
   assertOnlyCalls,
-  callLikeOf,
   callableOf,
-  describeReferences,
+  locationOf,
+  resolveCall,
   surveyCallSites,
 } from '../signatures.js';
 
@@ -41,10 +41,14 @@ import {
  *   near-identical sibling files are enough to trigger it, which is an
  *   ordinary shape for handlers, routes and adapters.
  *
- * So the reference classifier decides what is rewritable before the
- * engine runs, and afterwards the call sites the engine actually
- * touched are diffed against the ones the classifier found. A partial
- * rewrite is refused rather than shipped.
+ * The first is a refusal: the classifier decides what is rewritable
+ * before the engine is asked anything, because an escape genuinely
+ * makes the conversion unsafe. The second is not — the engine is wrong
+ * about which calls to visit, not about what the conversion should be,
+ * and the collision is an artifact of file layout rather than anything
+ * about the code. So the calls it skipped are rewritten here, from the
+ * same resolved signatures, and the repair is reported in `warnings`
+ * rather than passed off as the engine's own work.
  */
 
 export interface ChangeSignatureInput {
@@ -74,6 +78,58 @@ function positionsOf(references: readonly { file: string; line: number; characte
   }));
 }
 
+/** Whether any edit in `edit` touches this call's argument list. */
+function argumentsRewritten(
+  edit: WorkspaceEdit,
+  call: ts.CallExpression | ts.NewExpression,
+  sourceFile: ts.SourceFile,
+): boolean {
+  const edits = edit.changes[path.resolve(sourceFile.fileName)] ?? [];
+  const args = call.arguments;
+  if (!args) return false;
+  return edits.some((candidate) => {
+    const start = sourceFile.getPositionOfLineAndCharacter(
+      candidate.range.start.line,
+      candidate.range.start.character,
+    );
+    const end = sourceFile.getPositionOfLineAndCharacter(
+      candidate.range.end.line,
+      candidate.range.end.character,
+    );
+    return start < args.end && end > args.pos;
+  });
+}
+
+/**
+ * The options object a positional argument list becomes.
+ *
+ * Names come from the resolved signature rather than from the
+ * declaration's parameter order, so a `this` parameter or an overload
+ * cannot shift them. An argument already named after its parameter is
+ * written in shorthand, which is what TypeScript's own conversion emits
+ * and what a human would have written.
+ */
+function optionsObjectFor(
+  call: ts.CallExpression | ts.NewExpression,
+  signature: ts.Signature,
+  sourceFile: ts.SourceFile,
+): string {
+  const fields: string[] = [];
+  for (const [index, argument] of [...(call.arguments ?? [])].entries()) {
+    const parameter = signature.parameters[index];
+    const declaration = parameter?.declarations?.[0];
+    if (!parameter || !declaration || !ts.isParameter(declaration) || !ts.isIdentifier(declaration.name)) {
+      throw new Error(
+        `Cannot name argument ${index + 1} of the call at ${locationOf(sourceFile, call.getStart(sourceFile))}`,
+      );
+    }
+    const name = declaration.name.text;
+    const text = argument.getText(sourceFile);
+    fields.push(text === name ? name : `${name}: ${text}`);
+  }
+  return `{ ${fields.join(', ')} }`;
+}
+
 export const changeSignature: Tool<
   ChangeSignatureInput,
   ChangeSignatureOutput,
@@ -89,9 +145,9 @@ export const changeSignature: Tool<
     'remove that trap by construction. Refuses when the function is ever used as a value ' +
     '(arr.map(f), .call/.apply/.bind, typeof f, a decorator, a JSX component), because arity ' +
     'is checked by assignability there; on spread calls; on overload sets; and on a method ' +
-    'that overrides or implements another. Verifies afterwards that every call site the ' +
-    'classifier found was actually rewritten, since TypeScript silently drops calls sharing a ' +
-    'byte offset across files. Dry-run by default; apply: true writes to disk.',
+    'that overrides or implements another. TypeScript silently drops calls that share a byte ' +
+    'offset with one in another file; those are rewritten here instead and reported in ' +
+    'warnings. Dry-run by default; apply: true writes to disk.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -194,35 +250,69 @@ export const changeSignature: Tool<
       action: action.action,
     });
 
-    // The completeness check. TypeScript deduplicates call sites by
-    // position without comparing files, so a call sharing a byte offset
-    // with one in another file is dropped — the edit looks fine and the
-    // caller is left calling positionally.
-    const edited = new Set(Object.keys(edit.changes).map((file) => path.resolve(file)));
-    const missed = survey.calls.filter((call) => {
-      const site = callLikeOf(call.node);
-      if (!site) return true;
-      return !edited.has(path.resolve(call.file));
-    });
+    // TypeScript deduplicates call sites by source position without
+    // comparing files, so a call sharing a byte offset with one in
+    // another file is dropped and left calling positionally. The edit
+    // looks fine and nothing is reported. Two byte-identical sibling
+    // files are enough — an ordinary shape for handlers and routes.
+    //
+    // The defect is in which calls the engine visits, not in what the
+    // conversion should be, so the missing edits are authored here
+    // rather than the whole refactoring being refused over a bug in
+    // somebody else's dedupe.
+    const repaired: WorkspaceEdit = { ...edit, changes: { ...edit.changes } };
+    const warnings: string[] = [];
+    const missed: string[] = [];
+    for (const reference of survey.calls) {
+      const { call, sourceFile } = resolveCall(checker, reference, callable, calleeName);
+      if (argumentsRewritten(edit, call, sourceFile)) continue;
+
+      const signature = checker.getResolvedSignature(call);
+      if (!signature) {
+        missed.push(`${reference.file}:${reference.line + 1}:${reference.character + 1}`);
+        continue;
+      }
+      const args = call.arguments;
+      if (!args) {
+        missed.push(`${reference.file}:${reference.line + 1}:${reference.character + 1}`);
+        continue;
+      }
+      const file = path.resolve(sourceFile.fileName);
+      repaired.changes[file] = [
+        ...(repaired.changes[file] ?? []),
+        {
+          range: {
+            start: sourceFile.getLineAndCharacterOfPosition(args.pos),
+            end: sourceFile.getLineAndCharacterOfPosition(args.end),
+          },
+          newText: optionsObjectFor(call, signature, sourceFile),
+        },
+      ];
+      warnings.push(
+        `TypeScript skipped the call at ${reference.file}:${reference.line + 1}:${reference.character + 1} ` +
+          '(it deduplicates call sites by position without comparing files); it was rewritten here instead',
+      );
+    }
     if (missed.length > 0) {
       throw new Error(
-        `TypeScript rewrote the declaration but not every call. These would be left calling ` +
-          `"${calleeName}" positionally:\n  ${describeReferences(missed)}`,
+        `TypeScript rewrote the declaration but not every call, and these could not be ` +
+          `rewritten here either — they would be left calling "${calleeName}" positionally:\n  ${missed.join('\n  ')}`,
       );
     }
 
-    const filesChanged = filesTouched(edit);
+    const edit2 = repaired;
+    const filesChanged = filesTouched(edit2);
     const callSites = positionsOf(survey.calls);
-    const newDiagnostics = (await diagnosticsIntroducedBy(session, edit)).map(
+    const newDiagnostics = (await diagnosticsIntroducedBy(session, edit2)).map(
       (diagnostic) => diagnostic.text,
     );
 
     if (input.apply !== true || newDiagnostics.length > 0) {
-      return { applied: false, edit, filesChanged, newDiagnostics, warnings: [], callSites };
+      return { applied: false, edit: edit2, filesChanged, newDiagnostics, warnings, callSites };
     }
 
-    const written = await applyWorkspaceEdit(edit);
+    const written = await applyWorkspaceEdit(edit2);
     session.invalidate(written);
-    return { applied: true, edit, filesChanged, newDiagnostics, warnings: [], callSites };
+    return { applied: true, edit: edit2, filesChanged, newDiagnostics, warnings, callSites };
   },
 };
