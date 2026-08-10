@@ -28,18 +28,18 @@ Point any tool at a TypeScript project — a directory containing (or whose subt
 ```sh
 cd ~/code/my-app
 
-static-x ts/comments/stale-refs --project .
-static-x ts/comments/long --project . --input '{"maxLines": 20}'
-static-x ts/comments/llm-tells --project .
 static-x ts/async/floating-promises --project .
+static-x ts/comments/llm-tells --project .
+static-x ts/comments/long --project . --input '{"maxLines": 20}'
+static-x ts/comments/stale-refs --project .
 static-x ts/dupes/functions --project .
 static-x ts/graph/cycles --project .
 static-x ts/graph/dead-exports --project .
-static-x ts/types/loopholes --project . --input '{"includeTests": false}'
 static-x ts/refactors/rename --project . \
   --input '{"symbol": "makeOptions", "newName": "buildOptions"}'          # dry-run
 static-x ts/refactors/rename --project . \
   --input '{"symbol": "makeOptions", "newName": "buildOptions", "apply": true}'
+static-x ts/types/loopholes --project . --input '{"includeTests": false}'
 ```
 
 Usage is `static-x <tool> --project <root> [--input '<json>']`. Running with no arguments lists the available tools. Output is JSON on stdout — findings for analysis tools, a `WorkspaceEdit` plus status for refactors — so results pipe cleanly into `jq` or an LLM. Exit codes: `0` clean, `1` findings reported, `2` usage or execution error.
@@ -60,6 +60,9 @@ Put a `static-x.json` in the analyzed project's root (the `--project` directory,
         "minConfidence": "medium"
       },
       "long": { "input": { "maxLines": 20 } }
+    },
+    "async": {
+      "floating-promises": { "ignore": ["FastifyReply"] }
     }
   }
 }

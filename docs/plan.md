@@ -21,18 +21,31 @@ static-x/
   ts/                       # TypeScript language pack
     server/                 #   spawn/attach typescript-language-server; lifecycle
     project/                #   bind to a project: tsconfig discovery, ts.Program,
-    #                           file enumeration, incremental re-parse
+    #                           file enumeration, incremental re-parse;
+    #                           test-files.ts: shared *.test/*.spec detection
     ferry/                  #   maps tool invocations -> LSP requests / compiler
     #                           API calls against an open project session
+    ast/                    #   shared AST helpers; truncate.ts flattens finding
+    #                           names/previews for static-x.json ignore lists
     comments/               #   comment analysis tools (compiler-API-backed)
       long/                 #   comments exceeding line/char thresholds
       stale-refs/           #   comments referencing symbols that don't resolve
       llm-tells/            #   comments with LLM-flavored language
+    graph/                  #   import-graph.ts: resolved module graph, shared by
+      dead-exports/         #   exports nothing imports, files nothing references
+      cycles/               #   import cycles as strongly-connected components
+    dupes/
+      functions/            #   structurally identical function bodies (AST hash)
+    types/
+      loopholes/            #   assertions, non-null !, explicit any, directives
+    async/
+      floating-promises/    #   thenables dropped without await/.catch/void
     refactors/
       rename/               #   symbol rename via LSP textDocument/rename
   cli/                      # `sx <lang> <tool>` entrypoint, JSON output
   mcp/                      # MCP server exposing the same tool registry
-  fixtures/                 # small sample projects used by tests
+  fixtures/                 # sample projects used by tests: basic-ts, rename-ts,
+  #                           graph-ts, dupes-ts, loopholes-ts, async-ts
 ```
 
 Single Node/TypeScript package to start (`vitest` for tests, `tsx` for dev). Split into workspaces only if/when a second language pack lands.
@@ -118,12 +131,13 @@ Tool descriptions and schemas are written for the LLM as the audience — they s
 4. ✅ **Rename** — `ts/refactors/rename` with dry-run and apply modes, collision guard, tests covering cross-file renames and shorthand-property edge cases.
 5. ✅ **Semantic comments** — `ts/comments/stale-refs` (symbol index, extractors, resolution tiers), then `ts/comments/llm-tells` with its pattern data file.
 6. ✅ **MCP adapter** — expose the registry, session caching, README with Claude Code registration instructions.
+7. ✅ **Data-validated analysis suite** — `ts/graph/dead-exports` + `ts/graph/cycles` on a shared import graph, `ts/dupes/functions`, `ts/types/loopholes`, `ts/async/floating-promises`. Each was prototyped as a probe against real corpora before hardening; the measured finding counts set the defaults — test-scaffold exclusion, entry-point exemptions, thenable-name `ignore` config.
 
 Each milestone lands with tests against fixture projects — fixtures include deliberately stale comments, LLM-flavored comments, and rename edge cases, so tool quality is measured, not assumed.
 
 ## Later
 
 - Second language pack (`py/` via pyright or `rust/` via rust-analyzer) to pressure-test how much of `core/` is truly language-agnostic.
-- More comment tools: commented-out-code detection (try parsing comment bodies as TS), doc/signature drift (`@param` types vs. actual types).
+- More comment tools: commented-out-code detection (try parsing comment bodies as TS), doc/signature drift (`@param` types vs. actual types). Probes over two real corpora found zero commented-out-code findings — deprioritized on that evidence.
 - More refactors: extract-function, move-symbol, inline — all LSP/compiler-API-backed with the same WorkspaceEdit contract.
 - Watch mode: keep sessions warm and re-emit findings on file change.
