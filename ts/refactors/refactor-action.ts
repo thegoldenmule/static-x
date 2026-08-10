@@ -239,6 +239,26 @@ export function runRefactor(
   session: TsProjectSession,
   request: RefactorRequest,
 ): RefactorResult {
+  const result = tryRefactor(session, request);
+  if (!result) {
+    throw new Error(
+      notApplicableReason(session, request) ?? `"${request.action}" produced no edits here`,
+    );
+  }
+  return result;
+}
+
+/**
+ * As runRefactor, but reports "applicable, yet produced nothing" as
+ * `undefined` rather than an error. Some refactorings decline silently
+ * for reasons that are not about the code being unsuitable — a caller
+ * that can do the work itself needs to tell that apart from a genuine
+ * refusal.
+ */
+export function tryRefactor(
+  session: TsProjectSession,
+  request: RefactorRequest,
+): RefactorResult | undefined {
   const service = session.languageService().service;
   const refusal = notApplicableReason(session, request);
   if (refusal !== undefined) throw new Error(refusal);
@@ -267,10 +287,7 @@ export function runRefactor(
     );
   }
 
-  if (!edits || edits.edits.length === 0) {
-    const reason = notApplicableReason(session, request);
-    throw new Error(reason ?? `"${request.action}" produced no edits here`);
-  }
+  if (!edits || edits.edits.length === 0) return undefined;
 
   const result: RefactorResult = { edit: toWorkspaceEdit(session, edits.edits) };
   if (edits.renameFilename !== undefined && edits.renameLocation !== undefined) {

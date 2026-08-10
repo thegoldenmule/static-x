@@ -7,7 +7,7 @@ import { declarationAt, resolveTarget, SYMBOL_TARGET_PROPERTIES } from '../../as
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
-import { applicableActions, runRefactor } from '../refactor-action.js';
+import { applicableActions, tryRefactor } from '../refactor-action.js';
 import {
   assertOnlyCalls,
   callableOf,
@@ -41,14 +41,20 @@ import {
  *   near-identical sibling files are enough to trigger it, which is an
  *   ordinary shape for handlers, routes and adapters.
  *
- * The first is a refusal: the classifier decides what is rewritable
- * before the engine is asked anything, because an escape genuinely
- * makes the conversion unsafe. The second is not — the engine is wrong
- * about which calls to visit, not about what the conversion should be,
- * and the collision is an artifact of file layout rather than anything
- * about the code. So the calls it skipped are rewritten here, from the
- * same resolved signatures, and the repair is reported in `warnings`
- * rather than passed off as the engine's own work.
+ * Neither is a reason to refuse, because neither is about the code
+ * being unsuitable. What decides that is the reference classifier,
+ * which runs first: a function handed out as a value has its arity
+ * checked by assignability, and that is a genuine refusal. Past it,
+ * both defects are repaired — the declaration is written here when the
+ * engine returns nothing, and so is any call it skipped, from the same
+ * resolved signatures it would have used. Repairs are reported in
+ * `warnings` rather than passed off as the engine's own work.
+ *
+ * One thing the guard still catches, and should: TypeScript's own
+ * conversion emits `x?: T` for a defaulted parameter, so a call passing
+ * a possibly-undefined value fails under exactOptionalPropertyTypes.
+ * That is a real type error in the engine's output, and refusing it is
+ * the correct outcome rather than something to work around.
  */
 
 export interface ChangeSignatureInput {
@@ -98,6 +104,41 @@ function argumentsRewritten(
     );
     return start < args.end && end > args.pos;
   });
+}
+
+/**
+ * The destructured parameter list a positional one becomes, in the
+ * shape TypeScript's own conversion emits: bindings keep their
+ * defaults, and a parameter that is optional or defaulted becomes an
+ * optional field.
+ *
+ * Written here because the engine declines the whole refactoring for
+ * reasons that have nothing to do with the code being unsuitable — a
+ * JSDoc `{@link f}` in another file is enough. The body needs no edit:
+ * the bindings keep the parameter names it already uses.
+ */
+function destructuredParameterList(
+  parameters: readonly ts.ParameterDeclaration[],
+  sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+): string {
+  const bindings: string[] = [];
+  const fields: string[] = [];
+  for (const parameter of parameters) {
+    if (!ts.isIdentifier(parameter.name)) {
+      throw new Error('A parameter is already destructured, so it has no name to lift');
+    }
+    const name = parameter.name.text;
+    bindings.push(
+      parameter.initializer ? `${name} = ${parameter.initializer.getText(sourceFile)}` : name,
+    );
+    const optional = parameter.questionToken !== undefined || parameter.initializer !== undefined;
+    const type = parameter.type
+      ? parameter.type.getText(sourceFile)
+      : checker.typeToString(checker.getWidenedType(checker.getTypeAtLocation(parameter)));
+    fields.push(`${name}${optional ? '?' : ''}: ${type};`);
+  }
+  return `{ ${bindings.join(', ')} }: { ${fields.join(' ')} }`;
 }
 
 /**
@@ -243,12 +284,46 @@ export const changeSignature: Tool<
       );
     }
 
-    const { edit } = runRefactor(session, {
+    const attempted = tryRefactor(session, {
       file: target.file,
       at: target.offset,
       refactor: action.refactor,
       action: action.action,
     });
+
+    const warnings: string[] = [];
+    let edit: WorkspaceEdit;
+    if (attempted) {
+      edit = attempted.edit;
+    } else {
+      // Applicable, and yet nothing. TypeScript declines the whole
+      // conversion when the function has any reference it does not
+      // recognise as a call — a JSDoc {@link f} in another file is
+      // enough, which in a documented codebase is ordinary. Nothing
+      // about that makes the conversion unsafe: the classifier has
+      // already established every real use is a call, so the
+      // declaration is written here and the loop below writes the
+      // calls.
+      const sourceFile = callable.getSourceFile();
+      const list = destructuredParameterList(parameters, sourceFile, checker);
+      edit = {
+        changes: {
+          [path.resolve(sourceFile.fileName)]: [
+            {
+              range: {
+                start: sourceFile.getLineAndCharacterOfPosition(callable.parameters.pos),
+                end: sourceFile.getLineAndCharacterOfPosition(callable.parameters.end),
+              },
+              newText: list,
+            },
+          ],
+        },
+      };
+      warnings.push(
+        `TypeScript declined to convert "${calleeName}" — it does that when any reference is ` +
+          'not a call, including a JSDoc {@link} in another file; the conversion was written here instead',
+      );
+    }
 
     // TypeScript deduplicates call sites by source position without
     // comparing files, so a call sharing a byte offset with one in
@@ -261,7 +336,6 @@ export const changeSignature: Tool<
     // rather than the whole refactoring being refused over a bug in
     // somebody else's dedupe.
     const repaired: WorkspaceEdit = { ...edit, changes: { ...edit.changes } };
-    const warnings: string[] = [];
     const missed: string[] = [];
     for (const reference of survey.calls) {
       const { call, sourceFile } = resolveCall(checker, reference, callable, calleeName);

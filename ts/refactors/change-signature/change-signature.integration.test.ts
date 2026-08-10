@@ -60,6 +60,22 @@ describe('ts/refactors/change-signature', () => {
     expect(result.warnings.join('\n')).toMatch(/skipped the call.*twin-two\.ts/s);
   });
 
+  it('converts a function TypeScript declines over a doc comment', { timeout: 30_000 }, async () => {
+    // A `{@link instrument}` in another file is enough for TypeScript to
+    // return no edits at all, with no error and no reason. Nothing about
+    // a doc comment makes the conversion unsafe, so it is written here.
+    const result = await changeSignature.run(session, { symbol: 'instrument' });
+
+    expect(result.newDiagnostics).toEqual([]);
+    expect(await preview(result.edit, file('documented.ts'))).toContain(
+      '{ target, label, verbose = false }: { target: string; label: string; verbose?: boolean; }',
+    );
+    expect(await preview(result.edit, file('docs-link.ts'))).toContain(
+      "instrument({ target: 'pool', label: 'primary' })",
+    );
+    expect(result.warnings.join('\n')).toMatch(/declined to convert.*\{@link\}/s);
+  });
+
   it('refuses when the function is handed out as a value', { timeout: 30_000 }, async () => {
     // TypeScript reports this applicable and then returns no edits at
     // all — silence indistinguishable from success. The classifier has
