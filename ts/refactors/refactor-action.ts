@@ -62,17 +62,16 @@ function inferFormatSettings(session: TsProjectSession): ts.FormatCodeSettings {
       indentSize = candidate;
     }
   }
+  // Spread TypeScript's defaults rather than listing settings: every
+  // key left out of a from-scratch object reads as false, and the
+  // engine takes that literally. Omitting
+  // insertSpaceBeforeAndAfterBinaryOperators alone emits `a*b`.
   return {
+    ...ts.getDefaultFormatCodeSettings('\n'),
     indentSize: convertTabsToSpaces ? indentSize : 4,
     tabSize: convertTabsToSpaces ? indentSize : 4,
     convertTabsToSpaces,
     newLineCharacter: '\n',
-    insertSpaceAfterCommaDelimiter: true,
-    insertSpaceAfterKeywordsInControlFlowStatements: true,
-    insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces: true,
-    insertSpaceBeforeFunctionParenthesis: false,
-    placeOpenBraceOnNewLineForFunctions: false,
-    placeOpenBraceOnNewLineForControlBlocks: false,
     semicolons: ts.SemicolonPreference.Insert,
   };
 }
@@ -157,6 +156,11 @@ export function applicableActions(
   kindPrefix?: string,
 ): ApplicableAction[] {
   const available: ApplicableAction[] = [];
+  // triggerReason 'invoked' means "the user asked", which is exactly
+  // what a tool call is. TypeScript gates whole refactor families on
+  // it — Convert export, Convert import and Inline variable are
+  // applicable at no position without it.
+  //
   // includeInteractiveActions: refactors that need an argument the
   // caller supplies (Move to file's destination) are otherwise not
   // listed at all, and would look unavailable rather than unasked.
@@ -166,7 +170,7 @@ export function applicableActions(
       file,
       at,
       userPreferences(session),
-      undefined,
+      'invoked',
       kindPrefix,
       true,
     );
@@ -200,7 +204,7 @@ function notApplicableReason(
       request.file,
       request.at,
       userPreferences(session),
-      undefined,
+      'invoked',
       undefined,
       true,
     );
@@ -221,12 +225,24 @@ export interface RefactorResult {
 
 /**
  * Run a refactoring, or throw with TypeScript's reason for refusing.
+ *
+ * Applicability is checked first, and that order matters rather than
+ * being tidiness: the two entry points disagree about the target. The
+ * edit path always adjusts the span it is given, while the
+ * applicability path adjusts only when asked — so for a range that
+ * does not land on node boundaries, TypeScript can refuse the target
+ * and still produce a confident edit for a neighbouring one. Asking
+ * "may I?" before "do it" is what keeps a slightly-wrong range from
+ * silently refactoring the wrong code.
  */
 export function runRefactor(
   session: TsProjectSession,
   request: RefactorRequest,
 ): RefactorResult {
   const service = session.languageService().service;
+  const refusal = notApplicableReason(session, request);
+  if (refusal !== undefined) throw new Error(refusal);
+
   let edits: ts.RefactorEditInfo | undefined;
   try {
     edits = service.getEditsForRefactor(
