@@ -8,7 +8,8 @@ import { createMcpServer } from './server.js';
 const FIXTURE = path.resolve(import.meta.dirname, '../fixtures/basic-ts');
 
 describe('MCP adapter', () => {
-  const { server, ferry } = createMcpServer(createTsRegistry());
+  const registry = createTsRegistry();
+  const { server, ferry } = createMcpServer(registry);
   const client = new Client({ name: 'test-client', version: '0.0.0' });
 
   beforeAll(async () => {
@@ -39,6 +40,24 @@ describe('MCP adapter', () => {
     expect(long.inputSchema.properties).toHaveProperty('maxLines');
   });
 
+  it('advertises each tool output wrapped in a result-object schema', async () => {
+    const { tools } = await client.listTools();
+    const cycles = tools.find((t) => t.name === 'ts_graph_cycles')!;
+    expect(cycles.outputSchema).toEqual({
+      type: 'object',
+      properties: { result: registry.get('ts/graph/cycles').outputSchema },
+      required: ['result'],
+      additionalProperties: false,
+    });
+    const rename = tools.find((t) => t.name === 'ts_refactors_rename')!;
+    expect(rename.outputSchema).toEqual({
+      type: 'object',
+      properties: { result: registry.get('ts/refactors/rename').outputSchema },
+      required: ['result'],
+      additionalProperties: false,
+    });
+  });
+
   it('runs a tool end-to-end through MCP', async () => {
     const result = await client.callTool({
       name: 'ts_comments_stale-refs',
@@ -53,11 +72,13 @@ describe('MCP adapter', () => {
       'makeOptions',
       'minuend',
     ]);
+    expect(result.structuredContent).toEqual({ result: findings });
   });
 
   it('returns isError for unknown tools and missing projectRoot', async () => {
     const bad = await client.callTool({ name: 'ts_comments_long', arguments: {} });
     expect(bad.isError).toBe(true);
+    expect(bad.structuredContent).toBeUndefined();
     const unknown = await client.callTool({
       name: 'ts_nope_nope',
       arguments: { projectRoot: FIXTURE },

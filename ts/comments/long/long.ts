@@ -1,6 +1,7 @@
 import ts from 'typescript';
 import type { Finding, Tool } from '../../../core/tool/index.js';
 import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
+import { truncateFlat } from '../../ast/truncate.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { collectCommentRanges, toBlocks } from '../collect.js';
 
@@ -13,6 +14,8 @@ export interface LongCommentsInput {
 
 const DEFAULT_MAX_LINES = 10;
 const DEFAULT_MAX_CHARS = 800;
+/** data.name is the flattened comment head, the static-x.json ignore key. */
+const MAX_NAME_CHARS = 60;
 
 const LICENSE = /\b(?:copyright|licen[cs]e|spdx)\b|\(c\)/i;
 
@@ -46,7 +49,14 @@ export function findLongCommentsInFile(
       code: 'comment.long',
       message: `Comment block ${reason}. Long comments often restate code or hide stale context; consider tightening or deleting.`,
       severity: 'info',
-      data: { lines, chars, maxLines, maxChars, kind: block.kind },
+      data: {
+        name: truncateFlat(text.slice(block.pos, block.end), MAX_NAME_CHARS),
+        lines,
+        chars,
+        maxLines,
+        maxChars,
+        kind: block.kind,
+      },
     });
   }
   return findings;

@@ -16,7 +16,7 @@ Each matched pattern contributes its weight; a comment is flagged when the sum r
 
 ## Output
 
-`Finding[]` with code `comment.llm-tell`, severity `info`, and `data: { score, matches }` listing the matched pattern ids.
+`Finding[]` with code `comment.llm-tell`, severity `info`, and `data: { name, score, matches }` listing the matched pattern ids; `name` is the flattened comment head (60 chars), the key `ignore` entries match against.
 
 ```sh
 static-x ts/comments/llm-tells --project path/to/project --input '{"minScore": 2}'

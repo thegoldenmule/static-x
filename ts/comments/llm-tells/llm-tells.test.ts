@@ -20,6 +20,7 @@ describe('findLlmTellsInFile', () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]?.data?.matches).toEqual(['worth-noting', 'leverage', 'seamless']);
     expect(findings[0]?.data?.score).toBe(3);
+    expect(findings[0]?.data?.name).toBe("It's worth noting that this seamlessly leverages the cache.");
   });
 
   it('flags change-log prose describing the edit', () => {

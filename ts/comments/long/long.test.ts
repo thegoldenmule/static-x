@@ -21,7 +21,11 @@ describe('findLongCommentsInFile', () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({
       code: 'comment.long',
-      data: { lines: 4, kind: 'line-block' },
+      data: {
+        name: '// filler 0 // filler 1 // filler 2 // filler 3',
+        lines: 4,
+        kind: 'line-block',
+      },
       range: { start: { line: 0, character: 0 } },
     });
   });

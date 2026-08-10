@@ -1,9 +1,13 @@
 import ts from 'typescript';
 import type { Finding, Tool } from '../../../core/tool/index.js';
 import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
+import { truncateFlat } from '../../ast/truncate.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { collectCommentRanges, toBlocks, type CommentBlock } from '../collect.js';
 import { CHANGELOG, FILLERS, NARRATION_WEIGHT } from './patterns.js';
+
+/** Ignore-filter key length; matches ts/comments/long. */
+const MAX_NAME_CHARS = 60;
 
 export interface LlmTellsInput {
   /** Minimum summed pattern weight to flag a comment. Default 1. */
@@ -102,7 +106,7 @@ export function findLlmTellsInFile(
       code: 'comment.llm-tell',
       message: `Comment reads like generated filler (${matches.join(', ')}). Rewrite to state only what the code cannot say, or delete.`,
       severity: 'info',
-      data: { score, matches },
+      data: { name: truncateFlat(content, MAX_NAME_CHARS), score, matches },
     });
   }
   return findings;

@@ -15,7 +15,7 @@ Comment ranges come from AST node trivia — not text scanning — so comment-li
 
 ## Output
 
-`Finding[]` with code `comment.long`, an LSP-compatible range covering the block, and `data: { lines, chars, maxLines, maxChars, kind }` where `kind` is `line-block` or `block`.
+`Finding[]` with code `comment.long`, an LSP-compatible range covering the block, and `data: { name, lines, chars, maxLines, maxChars, kind }` where `name` is the flattened first 60 characters of the comment (the `ignore` key for `static-x.json`) and `kind` is `line-block` or `block`.
 
 ```sh
 static-x ts/comments/long --project path/to/project --input '{"maxLines": 20}'
