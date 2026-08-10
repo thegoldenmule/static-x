@@ -9,6 +9,7 @@ import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import { formatSettings } from '../refactor-action.js';
+import { mayHaveEffects, rootIdentifiers, unalias } from '../substitution.js';
 import {
   argumentIndexOf,
   assertOnlyCalls,
@@ -163,56 +164,6 @@ function tagLineRange(
  * their root: `Level.Info` contributes `Level`, because `Info` is a
  * property name resolved through it rather than a name in scope.
  */
-function rootIdentifiers(expression: ts.Node): ts.Identifier[] {
-  const roots: ts.Identifier[] = [];
-  const visit = (node: ts.Node): void => {
-    if (ts.isPropertyAccessExpression(node)) {
-      visit(node.expression);
-      return;
-    }
-    if (ts.isIdentifier(node)) {
-      roots.push(node);
-      return;
-    }
-    node.forEachChild(visit);
-  };
-  visit(expression);
-  return roots;
-}
-
-function unalias(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
-  return symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
-}
-
-/** Whether evaluating the expression can do anything besides produce a value. */
-function mayHaveEffects(expression: ts.Node): boolean {
-  let effectful = false;
-  const visit = (node: ts.Node): void => {
-    if (effectful) return;
-    if (
-      ts.isCallExpression(node) ||
-      ts.isNewExpression(node) ||
-      ts.isTaggedTemplateExpression(node) ||
-      ts.isAwaitExpression(node) ||
-      ts.isYieldExpression(node) ||
-      ts.isDeleteExpression(node) ||
-      ts.isPostfixUnaryExpression(node) ||
-      (ts.isPrefixUnaryExpression(node) &&
-        (node.operator === ts.SyntaxKind.PlusPlusToken ||
-          node.operator === ts.SyntaxKind.MinusMinusToken)) ||
-      (ts.isBinaryExpression(node) &&
-        node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-        node.operatorToken.kind <= ts.SyntaxKind.LastAssignment)
-    ) {
-      effectful = true;
-      return;
-    }
-    node.forEachChild(visit);
-  };
-  visit(expression);
-  return effectful;
-}
-
 interface ResolvedCall {
   call: ts.CallExpression | ts.NewExpression;
   sourceFile: ts.SourceFile;

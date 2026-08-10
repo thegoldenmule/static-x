@@ -42,6 +42,7 @@ static-x ts/refactors/extract --project . \
   --input '{"file": "src/cart.ts", "select": "line.qty * line.unit"}'   # list scopes
 static-x ts/refactors/extract-type --project . \
   --input '{"file": "src/net.ts", "select": "{ host: string; port: number }", "name": "Endpoint"}'
+static-x ts/refactors/inline-function --project . --input '{"symbol": "difference"}'
 static-x ts/refactors/inline-parameter --project . \
   --input '{"symbol": "log", "parameter": "level"}'
 static-x ts/refactors/make-readonly --project . --input '{"symbol": "limit"}'

@@ -35,6 +35,7 @@ describe('MCP adapter', () => {
       'ts_refactors_change-signature',
       'ts_refactors_extract',
       'ts_refactors_extract-type',
+      'ts_refactors_inline-function',
       'ts_refactors_inline-parameter',
       'ts_refactors_make-readonly',
       'ts_refactors_move-file',
