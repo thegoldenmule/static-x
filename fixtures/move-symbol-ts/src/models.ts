@@ -27,3 +27,8 @@ export function carrierKey(carrier: Carrier): string {
 export function billableWeight(shipment: Shipment): number {
   return round(shipment.weightKg * 2) / 2;
 }
+
+/** Reached only through a namespace import, which TypeScript cannot rewrite. */
+export type Waybill = {
+  code: string;
+};

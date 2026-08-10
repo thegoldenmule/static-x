@@ -136,6 +136,25 @@ export class TsProjectSession implements ProjectSession {
   }
 
   /**
+   * Every file in the compilation a tool may rewrite: not a declaration
+   * file, not a dependency.
+   *
+   * Unlike projectFiles()/sourceFiles() this is not narrowed to the
+   * root, because an edit's blast radius is the program rather than the
+   * directory — a barrel pulled in by `include: ["../lib"]` breaks the
+   * build exactly as one under `src` does, and the guard typechecks
+   * both. Analysis reports findings in sourceFiles(); a pass that
+   * repairs what an edit broke iterates this.
+   */
+  compilationFiles(): ts.SourceFile[] {
+    return this.program()
+      .getSourceFiles()
+      .filter(
+        (sf) => !sf.isDeclarationFile && !sf.fileName.includes('/node_modules/'),
+      );
+  }
+
+  /**
    * Source files that analysis tools may report findings in. Files
    * under hidden directories are generated framework output — Next.js
    * includes .next/types in tsconfig, for example — and are excluded:

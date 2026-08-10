@@ -117,6 +117,22 @@ describe('ts/refactors/move-symbol', () => {
     expect(facade).toContain("import type { Shipment } from './inventory.js';");
   });
 
+  it('explains the namespace import TypeScript cannot rewrite', { timeout: 30_000 }, async () => {
+    // The engine rewrites `ns.X` only where it is a property access; in
+    // a type annotation it is a qualified name, so the reference is left
+    // pointing at the old module. Refusing is right — saying nothing is
+    // not, and a bare TS2694 is not an explanation.
+    const result = await moveSymbol.run(session, {
+      symbol: 'Waybill',
+      toFile: 'src/inventory.ts',
+    });
+
+    expect(result.applied).toBe(false);
+    expect(result.newDiagnostics.join('\n')).toContain('TS2694');
+    expect(result.warnings.join('\n')).toContain(src('namespace.ts'));
+    expect(result.warnings.join('\n')).toContain('namespace import');
+  });
+
   it('warns about an export * that can no longer carry the symbol', { timeout: 30_000 }, async () => {
     const result = await moveSymbol.run(session, { symbol: 'Shipment', toFile: 'src/inventory.ts' });
     expect(result.warnings.join('\n')).toContain(src('api.ts'));
@@ -192,5 +208,27 @@ describe('ts/refactors/move-symbol apply mode', () => {
       expect(back.newDiagnostics).toEqual([]);
       expect(back.filesChanged).toContain(file('models.ts'));
     });
+  });
+});
+
+describe('ts/refactors/move-symbol outside the project root', () => {
+  const SCOPE = path.resolve(import.meta.dirname, '../../../fixtures/move-symbol-scope-ts');
+  const scoped = TsProjectSession.open(path.join(SCOPE, 'app'));
+  afterAll(() => scoped.dispose());
+
+  it('redirects a re-export the compilation includes from outside the root', { timeout: 30_000 }, async () => {
+    // The barrel lives outside the project root but inside the program,
+    // via include: ["src", "../lib"]. The guard typechecks it, and the
+    // engine already rewrites importers there — so a repair pass that
+    // stops at the root refuses the move and cannot even say why.
+    const result = await moveSymbol.run(scoped, {
+      symbol: 'Shipment',
+      toFile: 'src/inventory.ts',
+    });
+
+    expect(result.newDiagnostics).toEqual([]);
+    const barrel = await preview(result.edit, path.join(SCOPE, 'lib/barrel.ts'));
+    expect(barrel).toContain("export type { Carrier } from '../app/src/models.js';");
+    expect(barrel).toContain("export type { Shipment } from '../app/src/inventory.js';");
   });
 });

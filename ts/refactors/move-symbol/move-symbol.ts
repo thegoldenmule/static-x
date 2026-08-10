@@ -147,7 +147,12 @@ function fixReExports(
   const changes: Record<string, TextEdit[]> = {};
   const warnings: string[] = [];
 
-  for (const sourceFile of session.sourceFiles()) {
+  // compilationFiles(), not sourceFiles(): the guard typechecks the
+  // whole program, and the engine already rewrites importers outside
+  // the project root, so stopping the repair at the root would leave
+  // the tool rewriting one statement in a file and refusing to rewrite
+  // another two lines below it.
+  for (const sourceFile of session.compilationFiles()) {
     const file = path.resolve(sourceFile.fileName);
     if (file === source || file === destination) continue;
     const edits: TextEdit[] = [];
@@ -222,6 +227,41 @@ function fixReExports(
     if (edits.length > 0) changes[file] = edits;
   }
   return { edit: { changes }, warnings };
+}
+
+/**
+ * Files whose only reach to the moved symbol is a namespace import used
+ * in type position, which the engine leaves behind.
+ *
+ * It rewrites a namespace member only where the reference's parent is a
+ * property access; `ns.X` written as a type annotation parses as a
+ * qualified name instead, so the reference still points at the old
+ * module and the guard refuses with TS2694. The refusal is right —
+ * re-implementing the engine's alias derivation to fix it would mean
+ * keeping a copy of it in step across TypeScript versions — but leaving
+ * the caller to work out why from a bare diagnostic is not.
+ */
+function namespaceRefusals(
+  diagnostics: readonly string[],
+  source: string,
+  names: ReadonlySet<string>,
+): string[] {
+  // TS2694 renders the module without its extension.
+  const stem = source.replace(/\.[cm]?tsx?$/, '');
+  const files = new Set<string>();
+  for (const text of diagnostics) {
+    if (!text.includes('TS2694') || !text.includes(stem)) continue;
+    if (![...names].some((name) => text.includes(`'${name}'`))) continue;
+    const file = /^(.*?)\(\d+,\d+\):/.exec(text)?.[1];
+    if (file) files.add(file);
+  }
+  return [...files].map(
+    (file) =>
+      `${file} reaches the symbol through a namespace import. TypeScript's move engine ` +
+      'rewrites `ns.X` only where it is a property access, and a type annotation written ' +
+      '`ns.X` is a qualified name, so that reference still points at the old module and the ' +
+      'move is refused. Convert that file to a named import and the move succeeds.',
+  );
 }
 
 /** Does `file` import any of `names` from `source`? */
@@ -395,7 +435,7 @@ export const moveSymbol: Tool<MoveSymbolInput, MoveSymbolOutput, TsProjectSessio
       edit,
       filesChanged,
       newDiagnostics,
-      warnings: fixes.warnings,
+      warnings: [...fixes.warnings, ...namespaceRefusals(newDiagnostics, source, names)],
       created,
       destinationSuggestions,
     };
