@@ -18,6 +18,8 @@ static-x/
     rpc/                    #   JSON-RPC over stdio (vscode-jsonrpc)
     lsp/                    #   generic LSP client: initialize, doc sync, requests
     tool/                   #   Tool interface, registry, finding/edit schemas
+    config/                 #   static-x.json: default input, ignore/severity filters
+    files/                  #   changed-file scopes: path resolution, finding filter
   ts/                       # TypeScript language pack
     server/                 #   spawn/attach typescript-language-server; lifecycle
     project/                #   bind to a project: tsconfig discovery, ts.Program,
@@ -25,8 +27,11 @@ static-x/
     #                           test-files.ts: shared *.test/*.spec detection
     ferry/                  #   maps tool invocations -> LSP requests / compiler
     #                           API calls against an open project session
-    ast/                    #   shared AST helpers; truncate.ts flattens finding
-    #                           names/previews for static-x.json ignore lists
+    ast/                    #   shared AST helpers; targets.ts resolves a symbol
+    #                           or position without a caret; structural.ts is
+    #                           node identity (shape vs. tokens); hierarchy.ts
+    #                           indexes inheritance in reverse; truncate.ts
+    #                           flattens finding names for ignore lists
     comments/               #   comment analysis tools (compiler-API-backed)
       long/                 #   comments exceeding line/char thresholds
       stale-refs/           #   comments referencing symbols that don't resolve
@@ -40,10 +45,19 @@ static-x/
       loopholes/            #   assertions, non-null !, explicit any, directives
     async/
       floating-promises/    #   thenables dropped without await/.catch/void
-    refactors/
+    refactors/              #   guard.ts (in-memory typecheck), references.ts
+    #                           (reference classifier), refactor-action.ts
+    #                           (TypeScript's own refactoring engine),
+    #                           text-changes.ts, output.ts, testing.ts
       rename/               #   symbol rename via LSP textDocument/rename
+      move-symbol/          #   a declaration into another file, imports rewired
+      move-file/            #   a file, with every specifier that resolves to it
+      safe-delete/          #   a declaration nothing references, plus orphans
+      inline-parameter/     #   a parameter every caller passes the same value for
+      make-readonly/        #   readonly on a property nothing writes
   cli/                      # `sx <lang> <tool>` entrypoint, JSON output
   mcp/                      # MCP server exposing the same tool registry
+  hooks/                    # example git and Claude Code hooks over the CLI
   fixtures/                 # sample projects used by tests: basic-ts, rename-ts,
   #                           graph-ts, dupes-ts, loopholes-ts, async-ts
 ```
@@ -67,13 +81,17 @@ interface Tool<In, Out> {
 Two canonical output shapes, so every tool composes with every consumer:
 
 - **Finding** — `{ file, range: {start, end}, code, message, severity, data? }`. Ranges are 0-based line/character, matching LSP. `code` is machine-readable (`comment.stale-ref`), `data` carries tool-specific detail (e.g. the unresolved identifier).
-- **WorkspaceEdit** — LSP's own edit format. Tools that change code return edits; a shared `applyEdits(session, edit, { dryRun })` performs writes. Analysis and mutation never mix in one tool.
+- **WorkspaceEdit** — LSP's own edit format, plus `fileOps` for the changes text edits cannot express: creating, renaming, and deleting files. `changes` keys name paths in the post-`fileOps` tree, and `applyWorkspaceEdit` orders renames before content and deletions last. Analysis and mutation never mix in one tool.
+
+Refactorings return a further shared envelope, `{ applied, edit, filesChanged, newDiagnostics, warnings }`. The two failure fields divide the two ways a refactoring can be wrong: `newDiagnostics` is what the in-memory typecheck *proves* the edit would break, and non-empty always blocks the apply; `warnings` is what that typecheck structurally cannot see — a reference through a string key, a path in `package.json`, a guarantee the language erases — where the edit is applied and the caller is told what was not checked. A tool that only had the first field would present a green typecheck as proof of safety, which for deletions and moves it is not.
 
 ### Project session (`ts/project`)
 
 The stateful object every tool runs against:
 
 - Locates `tsconfig.json` from a root path (explicit override supported; multi-tsconfig repos pick nearest-ancestor per file).
+- Serves the compiler view from a `ts.LanguageService` rather than a bare `ts.Program`, because references, applicable refactorings, edits for a refactoring or a file rename, and code fixes are only indexed there. The program is the service's program, so a symbol resolved through the checker and a reference found through the service belong to one graph. Its host reads through an overlay, which is how an edit is typechecked before it touches disk.
+- Distinguishes the corpus a tool *analyzes* from the files it *reports* in: `sourceFiles()`/`projectFiles()` are the whole project, `targetFiles()` is the caller's file scope when one is set. Scoping is a reporting filter by construction, so a run over one changed file resolves its comments, imports, and duplicates against everything else.
 - Owns two views of the same project, created lazily:
   - **LSP view** — a running `typescript-language-server` initialized on the root, with document-sync bookkeeping (open/close/version tracking).
   - **Compiler view** — a `ts.Program` + `ts.TypeChecker` built from the tsconfig, for AST/comment/symbol-table work LSP can't do.
@@ -123,6 +141,8 @@ Two thin adapters over the same registry:
 
 Tool descriptions and schemas are written for the LLM as the audience — they state what the tool checks, what a finding means, and what a sensible next action is.
 
+Both adapters take `files`, a list of paths to report findings in, reserved at the ferry rather than declared per tool. That is the contract an automated gate needs: a git hook has the staged list, a Claude Code `PostToolUse` hook has `tool_input.file_path`, and either becomes a check that costs one file's worth of findings without giving up project-wide resolution. `hooks/` ships working examples of both, plus the `--format text` output they print when they reject a change.
+
 ## Milestones (all complete)
 
 1. ✅ **Scaffold** — package.json, tsconfig, vitest, lint; `core/tool` interfaces; empty registry; one fixture project under `fixtures/basic-ts/`.
@@ -132,6 +152,7 @@ Tool descriptions and schemas are written for the LLM as the audience — they s
 5. ✅ **Semantic comments** — `ts/comments/stale-refs` (symbol index, extractors, resolution tiers), then `ts/comments/llm-tells` with its pattern data file.
 6. ✅ **MCP adapter** — expose the registry, session caching, README with Claude Code registration instructions.
 7. ✅ **Data-validated analysis suite** — `ts/graph/dead-exports` + `ts/graph/cycles` on a shared import graph, `ts/dupes/functions`, `ts/types/loopholes`, `ts/async/floating-promises`. Each was prototyped as a probe against real corpora before hardening; the measured finding counts set the defaults — test-scaffold exclusion, entry-point exemptions, thenable-name `ignore` config.
+8. ✅ **The refactoring foundation and the first five** — [ROADMAP.md](../ROADMAP.md) translates ReSharper's whole 61-entry refactoring index into TypeScript; the machinery it needs (language-service view, typecheck guard, reference classifier, refactor-engine wrapper, file operations on `WorkspaceEdit`, symbol targeting) landed with tests before any tool used it, and then `move-symbol`, `safe-delete`, `move-file`, `inline-parameter`, and `make-readonly` were built on it. Each behavior the tools rely on was measured against the vendored TypeScript before being coded against, not assumed.
 
 Each milestone lands with tests against fixture projects — fixtures include deliberately stale comments, LLM-flavored comments, and rename edge cases, so tool quality is measured, not assumed.
 
@@ -139,5 +160,5 @@ Each milestone lands with tests against fixture projects — fixtures include de
 
 - Second language pack (`py/` via pyright or `rust/` via rust-analyzer) to pressure-test how much of `core/` is truly language-agnostic.
 - More comment tools: commented-out-code detection (try parsing comment bodies as TS), doc/signature drift (`@param` types vs. actual types). Probes over two real corpora found zero commented-out-code findings — deprioritized on that evidence.
-- More refactors: extract-function, move-symbol, inline — all LSP/compiler-API-backed with the same WorkspaceEdit contract.
+- More refactors, in the order [ROADMAP.md](../ROADMAP.md#after-the-five) argues for: the range-addressed extract family once a selection can be addressed by its text rather than its offsets, then the inline family, then `change-signature` as a composition of parts the first five proved.
 - Watch mode: keep sessions warm and re-emit findings on file change.
