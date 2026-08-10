@@ -10,6 +10,7 @@ Tools that operate on TypeScript projects through a shared [project session](pro
 | [`ts/dupes/functions`](dupes/functions/README.md) | Finds structurally identical function bodies by hashing each body's AST shape — identifier names and literal values excluded — so renamed copies still match. |
 | [`ts/graph/cycles`](graph/cycles/README.md) | Finds import cycles as strongly-connected components of the resolved module graph — one finding per cycle group, with cycles made only of `import type` edges downgraded to info. |
 | [`ts/graph/dead-exports`](graph/dead-exports/README.md) | Finds exports nothing imports and files nothing references, by resolving every import edge — tsconfig path aliases included — into a project-wide module graph. |
+| [`ts/types/loopholes`](types/loopholes/README.md) | Audits type-safety escape hatches — assertions, non-null `!`, explicit `any`, and suppression directives — grading each by how much checking it discards. |
 | [`ts/refactors/rename`](refactors/rename/README.md) | Renames a symbol project-wide via the language server, dry-run by default, refusing renames that would introduce compile errors. |
 
 ## Layout
@@ -17,5 +18,5 @@ Tools that operate on TypeScript projects through a shared [project session](pro
 - `server/` — spawns `typescript-language-server` and completes the LSP handshake
 - `project/` — binds to a project on disk; owns the LSP and compiler views
 - `ferry/` — dispatches tool calls, caching one session per project root
-- `comments/`, `dupes/`, `graph/`, `refactors/` — the tools
+- `comments/`, `dupes/`, `graph/`, `refactors/`, `types/` — the tools
 - `registry.ts` — registers every shipped tool for the CLI and MCP adapters

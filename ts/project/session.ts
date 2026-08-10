@@ -91,16 +91,29 @@ export class TsProjectSession implements ProjectSession {
     return this.program().getTypeChecker();
   }
 
-  /** Source files that belong to the project (not lib/.d.ts files). */
+  /**
+   * Source files that belong to the project (not lib/.d.ts files).
+   * Files under hidden directories are generated framework output —
+   * Next.js includes .next/types in tsconfig, for example — and are
+   * excluded: analysis findings there would audit code the project
+   * doesn't own. Only segments below the root count as hidden, so a
+   * project living under a dot-directory is unaffected.
+   */
   sourceFiles(): ts.SourceFile[] {
     return this.program()
       .getSourceFiles()
-      .filter(
-        (sf) =>
-          !sf.isDeclarationFile &&
-          !sf.fileName.includes('/node_modules/') &&
-          path.resolve(sf.fileName).startsWith(this.rootPath + path.sep),
-      );
+      .filter((sf) => {
+        const resolved = path.resolve(sf.fileName);
+        if (
+          sf.isDeclarationFile ||
+          sf.fileName.includes('/node_modules/') ||
+          !resolved.startsWith(this.rootPath + path.sep)
+        ) {
+          return false;
+        }
+        const relative = resolved.slice(this.rootPath.length + 1);
+        return !relative.split(path.sep).slice(0, -1).some((seg) => seg.startsWith('.'));
+      });
   }
 
   /** Drop cached views that read from disk; used after applying edits. */

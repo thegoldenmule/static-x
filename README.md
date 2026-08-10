@@ -34,6 +34,7 @@ static-x ts/comments/llm-tells --project .
 static-x ts/dupes/functions --project .
 static-x ts/graph/cycles --project .
 static-x ts/graph/dead-exports --project .
+static-x ts/types/loopholes --project . --input '{"includeTests": false}'
 static-x ts/refactors/rename --project . \
   --input '{"symbol": "makeOptions", "newName": "buildOptions"}'          # dry-run
 static-x ts/refactors/rename --project . \

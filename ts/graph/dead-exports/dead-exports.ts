@@ -415,6 +415,8 @@ export const deadExports: Tool<DeadExportsInput, Finding[], TsProjectSession> = 
         entryFiles.has(file) ||
         isFrameworkEntry(relative) ||
         entryGlobs.some((glob) => glob.test(relative));
+      // Test files are skipped because the runner, not imports, loads
+      // their exports.
       if (isEntry || isTestFile(file)) continue;
 
       const moduleSymbol = checker.getSymbolAtLocation(sourceFile);

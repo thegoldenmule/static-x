@@ -31,6 +31,7 @@ describe('MCP adapter', () => {
       'ts_graph_cycles',
       'ts_graph_dead-exports',
       'ts_refactors_rename',
+      'ts_types_loopholes',
     ]);
     const long = tools.find((t) => t.name === 'ts_comments_long')!;
     expect(long.inputSchema.required).toContain('projectRoot');

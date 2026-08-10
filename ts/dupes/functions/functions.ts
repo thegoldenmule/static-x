@@ -16,7 +16,10 @@ import { isTestFile } from '../../project/index.js';
 export interface DupeFunctionsInput {
   /** Ignore functions whose body subtree has fewer nodes. Default 35. */
   minNodes?: number;
-  /** Also scan `*.test.ts(x)` / `*.spec.ts(x)` files. Default false. */
+  /**
+   * Also scan `*.test.ts(x)` / `*.spec.ts(x)` files. Default false:
+   * duplicate test setup is usually deliberate.
+   */
   includeTests?: boolean;
 }
 

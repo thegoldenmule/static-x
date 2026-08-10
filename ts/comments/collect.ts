@@ -3,12 +3,17 @@ import ts from 'typescript';
 /**
  * All comment ranges in a file, parser-aware: collected from node
  * trivia rather than text scanning, so slashes inside strings,
- * templates, and regexes can't produce false comments.
+ * templates, and regexes can't produce false comments. JSX children
+ * need the same guard from the other direction: `//` inside JsxText is
+ * renderable text, but the lexical trivia scanners don't know that and
+ * fabricate comment ranges when asked to scan at JSX-text boundaries,
+ * so any range starting inside a JsxText span is dropped.
  */
 export function collectCommentRanges(sourceFile: ts.SourceFile): ts.CommentRange[] {
   const text = sourceFile.getFullText();
   const seen = new Set<number>();
   const ranges: ts.CommentRange[] = [];
+  const jsxTextSpans: ts.TextRange[] = [];
   const add = (found: ts.CommentRange[] | undefined) => {
     for (const range of found ?? []) {
       if (!seen.has(range.pos)) {
@@ -18,13 +23,19 @@ export function collectCommentRanges(sourceFile: ts.SourceFile): ts.CommentRange
     }
   };
   const visit = (node: ts.Node) => {
+    if (ts.isJsxText(node)) {
+      jsxTextSpans.push({ pos: node.pos, end: node.end });
+      return;
+    }
     add(ts.getLeadingCommentRanges(text, node.getFullStart()));
     add(ts.getTrailingCommentRanges(text, node.getEnd()));
     node.forEachChild(visit);
   };
   visit(sourceFile);
   add(ts.getLeadingCommentRanges(text, sourceFile.endOfFileToken.getFullStart()));
-  return ranges.sort((a, b) => a.pos - b.pos);
+  return ranges
+    .filter((range) => !jsxTextSpans.some((span) => range.pos >= span.pos && range.pos < span.end))
+    .sort((a, b) => a.pos - b.pos);
 }
 
 export interface CommentBlock {
