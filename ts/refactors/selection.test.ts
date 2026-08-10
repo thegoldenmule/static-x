@@ -95,6 +95,16 @@ describe('locateSelection', () => {
     expect(located.text).toBe('let total = 0;');
   });
 
+  it('reaches a signature, not just a body, when narrowed by within', () => {
+    // A parameter's type annotation is part of what someone means by
+    // "inside connect"; narrowing to the body puts it out of reach and
+    // makes every parameter and return type unaddressable.
+    const located = locate('{ host: string; port: number }', 'connect');
+
+    expect(located.kind).toBe('type');
+    expect(located.text).toBe('{ host: string; port: number }');
+  });
+
   it('refuses a selection that is not a whole node', () => {
     // Half an expression must fail outright rather than being widened
     // to the nearest node, which is what TypeScript would do with it.

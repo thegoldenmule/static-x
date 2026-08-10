@@ -255,7 +255,11 @@ export function locateSelection(
           'select a wider range instead of narrowing by name',
       );
     }
-    root = functions[0]!.body as ts.Node;
+    // The whole declaration, not just its body: a parameter's type
+    // annotation and a default value are part of what someone means by
+    // "inside connect", and narrowing to the body puts them out of
+    // reach. Statement runs are unaffected — they only occur in blocks.
+    root = functions[0]!;
   }
 
   const { keys, error } = keysFor(input.select);
