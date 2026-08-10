@@ -95,6 +95,20 @@ interface ReExportFixes {
   warnings: string[];
 }
 
+/** Offsets an edit list covers in `sourceFile`, for overlap tests. */
+function spansOf(
+  sourceFile: ts.SourceFile,
+  edits: readonly TextEdit[],
+): { start: number; end: number }[] {
+  return edits.map((edit) => ({
+    start: sourceFile.getPositionOfLineAndCharacter(
+      edit.range.start.line,
+      edit.range.start.character,
+    ),
+    end: sourceFile.getPositionOfLineAndCharacter(edit.range.end.line, edit.range.end.character),
+  }));
+}
+
 /**
  * Redirect barrels.
  *
@@ -110,6 +124,13 @@ interface ReExportFixes {
  * `export * from './old.js'` names nothing to redirect and silently
  * drops the symbol from that module's surface, so it is reported as a
  * warning instead.
+ *
+ * The engine's edits win where they overlap, but that has to be judged
+ * per statement rather than per file. A module commonly both imports
+ * the symbol and re-exports it; the engine rewrites the import and
+ * leaves the re-export, so skipping the whole file because the engine
+ * touched some of it leaves exactly the broken re-export this pass
+ * exists to repair.
  */
 function fixReExports(
   session: TsProjectSession,
@@ -117,22 +138,31 @@ function fixReExports(
     names: ReadonlySet<string>;
     source: string;
     destination: string;
-    /** Files the engine already edited; its edits win. */
-    engineEdited: ReadonlySet<string>;
+    /** The engine's own edits; where they overlap a statement, they win. */
+    engineEdits: Readonly<Record<string, TextEdit[]>>;
   },
 ): ReExportFixes {
-  const { names, source, destination, engineEdited } = options;
+  const { names, source, destination, engineEdits } = options;
   const compilerOptions = session.program().getCompilerOptions();
   const changes: Record<string, TextEdit[]> = {};
   const warnings: string[] = [];
 
   for (const sourceFile of session.sourceFiles()) {
     const file = path.resolve(sourceFile.fileName);
-    if (file === source || file === destination || engineEdited.has(file)) continue;
+    if (file === source || file === destination) continue;
     const edits: TextEdit[] = [];
+    const alreadyEdited = spansOf(sourceFile, engineEdits[file] ?? []);
 
     for (const statement of sourceFile.statements) {
       if (!ts.isExportDeclaration(statement)) continue;
+      if (
+        alreadyEdited.some(
+          (span) =>
+            span.start < statement.getEnd() && span.end > statement.getStart(sourceFile),
+        )
+      ) {
+        continue;
+      }
       const specifier = statement.moduleSpecifier;
       if (specifier === undefined || !ts.isStringLiteral(specifier)) continue;
       const resolved = ts.resolveModuleName(
@@ -342,7 +372,12 @@ export const moveSymbol: Tool<MoveSymbolInput, MoveSymbolOutput, TsProjectSessio
             names,
             source,
             destination: landedIn,
-            engineEdited: new Set(Object.keys(moved.edit.changes).map((file) => path.resolve(file))),
+            engineEdits: Object.fromEntries(
+              Object.entries(moved.edit.changes).map(([file, edits]) => [
+                path.resolve(file),
+                edits,
+              ]),
+            ),
           });
 
     const edit = mergeWorkspaceEdits(moved.edit, fixes.edit);

@@ -96,6 +96,27 @@ describe('ts/refactors/move-symbol', () => {
     );
   });
 
+  it('redirects a re-export in a file the engine also edited', { timeout: 30_000 }, async () => {
+    // facade.ts both imports Shipment and re-exports it from the same
+    // module. The engine rewrites the import and leaves the re-export
+    // pointing at a module that no longer declares the symbol, so
+    // skipping the whole file because the engine touched part of it
+    // leaves exactly the broken re-export this pass exists to repair.
+    // Found on a real 320-file package, where it made types re-exported
+    // this way unmovable.
+    const result = await moveSymbol.run(session, {
+      symbol: 'Shipment',
+      toFile: 'src/inventory.ts',
+    });
+
+    expect(result.newDiagnostics).toEqual([]);
+    const facade = await preview(result.edit, src('facade.ts'));
+    expect(facade).toContain("export type { Carrier } from './models.js';");
+    expect(facade).toContain("export type { Shipment } from './inventory.js';");
+    // The engine's own edit to the import clause is left alone.
+    expect(facade).toContain("import type { Shipment } from './inventory.js';");
+  });
+
   it('warns about an export * that can no longer carry the symbol', { timeout: 30_000 }, async () => {
     const result = await moveSymbol.run(session, { symbol: 'Shipment', toFile: 'src/inventory.ts' });
     expect(result.warnings.join('\n')).toContain(src('api.ts'));
