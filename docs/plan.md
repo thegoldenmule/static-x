@@ -160,5 +160,5 @@ Each milestone lands with tests against fixture projects — fixtures include de
 
 - Second language pack (`py/` via pyright or `rust/` via rust-analyzer) to pressure-test how much of `core/` is truly language-agnostic.
 - More comment tools: commented-out-code detection (try parsing comment bodies as TS), doc/signature drift (`@param` types vs. actual types). Probes over two real corpora found zero commented-out-code findings — deprioritized on that evidence.
-- More refactors, in the order [ROADMAP.md](../ROADMAP.md#after-the-five) argues for: the range-addressed extract family once a selection can be addressed by its text rather than its offsets, then the inline family, then `change-signature` as a composition of parts the first five proved.
+- More refactors, in the order [ROADMAP.md](../ROADMAP.md#the-next-five) argues for: the extract family once a selection can be addressed by its text rather than its offsets, then the options-object half of `change-signature`, then the inline family — which needs a substitution checker before it is safe, since TypeScript's own inline-variable is silently wrong in three ways the guard cannot see.
 - Watch mode: keep sessions warm and re-emit findings on file change.
