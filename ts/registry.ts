@@ -8,6 +8,7 @@ import { importCycles } from './graph/cycles/cycles.js';
 import { deadExports } from './graph/dead-exports/dead-exports.js';
 import { changeSignature } from './refactors/change-signature/change-signature.js';
 import { extract } from './refactors/extract/extract.js';
+import { extractType } from './refactors/extract-type/extract-type.js';
 import { inlineParameter } from './refactors/inline-parameter/inline-parameter.js';
 import { makeReadonly } from './refactors/make-readonly/make-readonly.js';
 import { moveFile } from './refactors/move-file/move-file.js';
@@ -31,6 +32,7 @@ export function createTsRegistry(): ToolRegistry {
   registry.register(deadExports);
   registry.register(changeSignature);
   registry.register(extract);
+  registry.register(extractType);
   registry.register(inlineParameter);
   registry.register(makeReadonly);
   registry.register(moveFile);
