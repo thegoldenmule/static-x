@@ -1,10 +1,12 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
+import type { FileScope } from '../../core/files/index.js';
 import type { ProjectSession } from '../../core/tool/index.js';
 import type { LspClient } from '../../core/lsp/index.js';
 import { startTsServer } from '../server/spawn.js';
 import { hasHiddenDirSegment } from './paths.js';
+import { TsLanguageService } from './service.js';
 
 /**
  * A bound connection to one TypeScript project on disk, owning two
@@ -15,8 +17,15 @@ import { hasHiddenDirSegment } from './paths.js';
  * - the compiler view (ts.Program + TypeChecker) for ASTs, comments,
  *   and symbol-table work the protocol has no vocabulary for.
  *
+ * The compiler view is served by a ts.LanguageService rather than a
+ * bare ts.Program, because refactorings need what only the service
+ * indexes — references, applicable refactors, edits for a refactor or
+ * a file rename, code fixes. Both come from the same service, so a
+ * symbol resolved through the checker and a reference found through
+ * the service belong to one graph rather than two.
+ *
  * Tools mutate through WorkspaceEdits; after an apply, invalidate()
- * drops the compiler view so the next call re-reads from disk.
+ * re-reads the changed files from disk.
  */
 export class TsProjectSession implements ProjectSession {
   readonly language = 'ts';
@@ -24,7 +33,9 @@ export class TsProjectSession implements ProjectSession {
   readonly configPath: string;
 
   #lsp: Promise<LspClient> | undefined;
-  #program: ts.Program | undefined;
+  #parsed: ts.ParsedCommandLine | undefined;
+  #service: TsLanguageService | undefined;
+  #scope: FileScope | undefined;
 
   private constructor(rootPath: string, configPath: string) {
     this.rootPath = rootPath;
@@ -67,9 +78,9 @@ export class TsProjectSession implements ProjectSession {
     return uri;
   }
 
-  /** The compiler view. First call parses tsconfig and typechecks. */
-  program(): ts.Program {
-    if (!this.#program) {
+  /** The parsed tsconfig, shared by both compiler-side views. */
+  parsedConfig(): ts.ParsedCommandLine {
+    if (!this.#parsed) {
       const parsed = ts.getParsedCommandLineOfConfigFile(this.configPath, undefined, {
         ...ts.sys,
         onUnRecoverableConfigFileDiagnostic: (diagnostic) => {
@@ -80,12 +91,26 @@ export class TsProjectSession implements ProjectSession {
         },
       });
       if (!parsed) throw new Error(`Failed to parse ${this.configPath}`);
-      this.#program = ts.createProgram({
-        rootNames: parsed.fileNames,
-        options: parsed.options,
-      });
+      this.#parsed = parsed;
     }
-    return this.#program;
+    return this.#parsed;
+  }
+
+  /**
+   * The language-service view: references, refactorings, code fixes.
+   * First call parses tsconfig and builds the service.
+   */
+  languageService(): TsLanguageService {
+    if (!this.#service) {
+      const parsed = this.parsedConfig();
+      this.#service = new TsLanguageService(parsed.fileNames, parsed.options);
+    }
+    return this.#service;
+  }
+
+  /** The compiler view. First call parses tsconfig and typechecks. */
+  program(): ts.Program {
+    return this.languageService().program();
   }
 
   checker(): ts.TypeChecker {
@@ -125,9 +150,53 @@ export class TsProjectSession implements ProjectSession {
     );
   }
 
-  /** Drop cached views that read from disk; used after applying edits. */
-  invalidate(): void {
-    this.#program = undefined;
+  /**
+   * The source files a tool should report findings in: sourceFiles(),
+   * narrowed to the caller's file scope when one is set (a hook's
+   * changed-files list). Tools iterate this to produce findings but
+   * keep building project-wide context — symbol indexes, import graphs,
+   * duplicate groups — from sourceFiles()/projectFiles(), which the
+   * scope never touches.
+   */
+  targetFiles(): ts.SourceFile[] {
+    const scope = this.#scope;
+    if (!scope) return this.sourceFiles();
+    return this.sourceFiles().filter((sf) => scope.has(sf.fileName));
+  }
+
+  /**
+   * Set (or clear, with undefined) the reporting scope. The dispatch
+   * layer owns this: it sets a scope for the duration of one tool call
+   * and clears it after, serializing calls against the same session so
+   * one call's scope can never leak into another's.
+   */
+  setScope(scope: FileScope | undefined): void {
+    this.#scope = scope;
+  }
+
+  /**
+   * Re-read from disk after applying edits. `changed` names the files
+   * an edit touched; without it every file is treated as changed.
+   * Files created or deleted by the edit enter and leave the
+   * compilation here, so the next call sees the project as it now is.
+   */
+  invalidate(changed?: {
+    written?: readonly string[];
+    created?: readonly string[];
+    deleted?: readonly string[];
+  }): void {
+    if (!this.#service) return;
+    if (!changed) {
+      this.#service.invalidate();
+      return;
+    }
+    this.#service.addRootNames(changed.created ?? []);
+    this.#service.removeRootNames(changed.deleted ?? []);
+    this.#service.invalidate([
+      ...(changed.written ?? []),
+      ...(changed.created ?? []),
+      ...(changed.deleted ?? []),
+    ]);
   }
 
   async dispose(): Promise<void> {
@@ -136,6 +205,8 @@ export class TsProjectSession implements ProjectSession {
       this.#lsp = undefined;
       await (await lsp).shutdown();
     }
-    this.#program = undefined;
+    this.#service?.dispose();
+    this.#service = undefined;
+    this.#parsed = undefined;
   }
 }
