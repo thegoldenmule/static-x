@@ -9,7 +9,13 @@ import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import { formatSettings } from '../refactor-action.js';
-import { classifyReferences, isUse, type ClassifiedReference } from '../references.js';
+import {
+  argumentIndexOf,
+  assertOnlyCalls,
+  callLikeOf,
+  callableOf,
+  surveyCallSites,
+} from '../signatures.js';
 
 /**
  * Inline Parameter: when every call site passes the same value for a
@@ -50,34 +56,9 @@ export interface InlineParameterOutput extends RefactorOutput {
   callSites: CallSitePosition[];
 }
 
-type CallableDeclaration =
-  | ts.FunctionDeclaration
-  | ts.MethodDeclaration
-  | ts.FunctionExpression
-  | ts.ArrowFunction;
-
 function at(sourceFile: ts.SourceFile, offset: number): string {
   const { line, character } = sourceFile.getLineAndCharacterOfPosition(offset);
   return `${sourceFile.fileName}:${line + 1}:${character + 1}`;
-}
-
-/** The callable a resolved declaration denotes, for all three TS forms. */
-function callableOf(declaration: ts.Node): CallableDeclaration | undefined {
-  if (
-    ts.isFunctionDeclaration(declaration) ||
-    ts.isMethodDeclaration(declaration) ||
-    ts.isFunctionExpression(declaration) ||
-    ts.isArrowFunction(declaration)
-  ) {
-    return declaration;
-  }
-  if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
-    const initializer = declaration.initializer;
-    if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) {
-      return initializer;
-    }
-  }
-  return undefined;
 }
 
 function isThisParameter(parameter: ts.ParameterDeclaration): boolean {
@@ -118,31 +99,6 @@ function usesArguments(body: ts.Node): boolean {
   };
   body.forEachChild(visit);
   return found;
-}
-
-/** The call a reference to the callee forms, through property accesses. */
-function callLikeOf(node: ts.Node): ts.CallExpression | ts.NewExpression | undefined {
-  let current: ts.Node = node;
-  while (current.parent) {
-    const parent: ts.Node = current.parent;
-    if (
-      (ts.isCallExpression(parent) || ts.isNewExpression(parent)) &&
-      parent.expression === current
-    ) {
-      return parent;
-    }
-    if (
-      ts.isPropertyAccessExpression(parent) ||
-      ts.isElementAccessExpression(parent) ||
-      ts.isParenthesizedExpression(parent) ||
-      ts.isNonNullExpression(parent)
-    ) {
-      current = parent;
-      continue;
-    }
-    return undefined;
-  }
-  return undefined;
 }
 
 /**
@@ -416,30 +372,9 @@ export const inlineParameter: Tool<
 
     // References first: a single escape invalidates every conclusion
     // drawn from the call sites, so it is checked before them.
-    const references = classifyReferences(session, target.file, target.offset, {
-      callable: new Set([calleeName]),
-    });
-    const uses = references.filter(isUse);
-    const where = (subset: readonly ClassifiedReference[]) =>
-      subset.map((r) => `${r.file}:${r.line + 1}:${r.character + 1} (${r.kind})`).join('\n  ');
-
-    const escapes = uses.filter(
-      (reference) =>
-        reference.kind !== 'direct-call' &&
-        reference.kind !== 'new' &&
-        reference.kind !== 'spread-call',
-    );
-    if (escapes.length > 0) {
-      throw new Error(
-        `"${calleeName}" is not only called: at these references its signature is checked by assignability or rewritten by the caller, so dropping a parameter would compile and misbehave:\n  ${where(escapes)}`,
-      );
-    }
-    const spreads = uses.filter((reference) => reference.kind === 'spread-call');
-    if (spreads.length > 0) {
-      throw new Error(
-        `"${calleeName}" is called with spread arguments, so which one feeds "${parameterName}" is a runtime fact:\n  ${where(spreads)}`,
-      );
-    }
+    const survey = surveyCallSites(session, target.file, target.offset, calleeName);
+    assertOnlyCalls(calleeName, survey, `dropping "${parameterName}"`);
+    const uses = survey.uses;
 
     const resolved: ResolvedCall[] = [];
     for (const reference of uses) {
@@ -460,9 +395,7 @@ export const inlineParameter: Tool<
           `The call at ${at(sourceFile, call.getStart(sourceFile))} does not resolve to "${calleeName}"`,
         );
       }
-      const index = signature.parameters.findIndex((p) =>
-        p.declarations?.some((d) => d === parameter),
-      );
+      const index = argumentIndexOf(signature, parameter);
       if (index === -1) {
         throw new Error(
           `"${parameterName}" has no slot in the signature resolved at ${at(sourceFile, call.getStart(sourceFile))}`,
