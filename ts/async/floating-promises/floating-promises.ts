@@ -1,5 +1,7 @@
 import ts from 'typescript';
 import type { Finding, Severity, Tool } from '../../../core/tool/index.js';
+import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
+import { unwrapParens } from '../../ast/expressions.js';
 import { truncateFlat } from '../../ast/truncate.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { isTestFile } from '../../project/index.js';
@@ -22,12 +24,6 @@ export interface FloatingPromisesInput {
 }
 
 const MAX_PREVIEW_CHARS = 60;
-
-function unwrapParens(node: ts.Expression): ts.Expression {
-  let current = node;
-  while (ts.isParenthesizedExpression(current)) current = current.expression;
-  return current;
-}
 
 /**
  * Type-level wrappers are transparent to rejection handling: `!`,
@@ -254,7 +250,7 @@ export const floatingPromises: Tool<FloatingPromisesInput, Finding[], TsProjectS
     },
     additionalProperties: false,
   },
-  outputSchema: { type: 'array', items: { $ref: '#/definitions/finding' } },
+  outputSchema: FINDINGS_ARRAY_SCHEMA,
   run(session, input) {
     const checker = session.checker();
     return Promise.resolve(

@@ -260,14 +260,17 @@ describe('ts/dupes/functions on the fixture project', () => {
       file: path.join(FIXTURE, 'src', 'alpha.ts'),
       code: 'dupes.function',
       range: { start: { line: 0, character: 0 }, end: { line: 13, character: 1 } },
-      data: { peers: [{ file: 'src/beta.ts', line: 3 }], nodes: 49 },
+      data: { kind: 'exact', peers: [{ file: 'src/beta.ts', line: 3 }], nodes: 49 },
     });
     expect(findings[0]?.message).toContain('src/beta.ts:3');
     expect(findings[1]?.data).toMatchObject({ peers: [{ file: 'src/alpha.ts', line: 1 }] });
     expect(findings[0]?.data?.group).toMatch(/^[0-9a-f]{12}$/);
     expect(findings[0]?.data?.group).toBe(findings[1]?.data?.group);
     expect(findings[2]?.data?.group).not.toBe(findings[0]?.data?.group);
-    expect(findings[6]?.data).toMatchObject({ peers: [{ file: 'src/gamma.ts', line: 16 }] });
+    expect(findings[6]?.data).toMatchObject({
+      kind: 'structural',
+      peers: [{ file: 'src/gamma.ts', line: 16 }],
+    });
   });
 
   it('adds the .test.ts and .spec.ts functions with includeTests', async () => {

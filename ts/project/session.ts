@@ -4,6 +4,7 @@ import ts from 'typescript';
 import type { ProjectSession } from '../../core/tool/index.js';
 import type { LspClient } from '../../core/lsp/index.js';
 import { startTsServer } from '../server/spawn.js';
+import { hasHiddenDirSegment } from './paths.js';
 
 /**
  * A bound connection to one TypeScript project on disk, owning two
@@ -92,28 +93,36 @@ export class TsProjectSession implements ProjectSession {
   }
 
   /**
-   * Source files that belong to the project (not lib/.d.ts files).
-   * Files under hidden directories are generated framework output —
-   * Next.js includes .next/types in tsconfig, for example — and are
-   * excluded: analysis findings there would audit code the project
-   * doesn't own. Only segments below the root count as hidden, so a
-   * project living under a dot-directory is unaffected.
+   * Program files that live under the project root (not lib/.d.ts
+   * files, not node_modules) — the raw membership test, hidden
+   * directories included. The import graph walks this set so that
+   * imports written in generated files still contribute edges; tools
+   * report findings only on sourceFiles() members.
    */
-  sourceFiles(): ts.SourceFile[] {
+  projectFiles(): ts.SourceFile[] {
     return this.program()
       .getSourceFiles()
-      .filter((sf) => {
-        const resolved = path.resolve(sf.fileName);
-        if (
-          sf.isDeclarationFile ||
-          sf.fileName.includes('/node_modules/') ||
-          !resolved.startsWith(this.rootPath + path.sep)
-        ) {
-          return false;
-        }
-        const relative = resolved.slice(this.rootPath.length + 1);
-        return !relative.split(path.sep).slice(0, -1).some((seg) => seg.startsWith('.'));
-      });
+      .filter(
+        (sf) =>
+          !sf.isDeclarationFile &&
+          !sf.fileName.includes('/node_modules/') &&
+          path.resolve(sf.fileName).startsWith(this.rootPath + path.sep),
+      );
+  }
+
+  /**
+   * Source files that analysis tools may report findings in. Files
+   * under hidden directories are generated framework output — Next.js
+   * includes .next/types in tsconfig, for example — and are excluded:
+   * analysis findings there would audit code the project doesn't own.
+   * Only segments below the root count as hidden, so a project living
+   * under a dot-directory is unaffected.
+   */
+  sourceFiles(): ts.SourceFile[] {
+    return this.projectFiles().filter(
+      (sf) =>
+        !hasHiddenDirSegment(path.resolve(sf.fileName).slice(this.rootPath.length + 1)),
+    );
   }
 
   /** Drop cached views that read from disk; used after applying edits. */

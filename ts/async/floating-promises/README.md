@@ -12,7 +12,7 @@ False-positive mitigation is config-first: `data.name` carries the thenable type
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `includeTests` | `true` | Also scan `*.test.ts(x)` / `*.spec.ts(x)` files — a dropped rejection in a test silently passes the test |
+| `includeTests` | `true` | Also scan `*.test.*` / `*.spec.*` files (`.ts`/`.tsx`/`.mts`/`.cts`) — a dropped rejection in a test silently passes the test |
 
 ## Output
 

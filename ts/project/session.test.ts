@@ -13,4 +13,10 @@ describe('TsProjectSession.sourceFiles', () => {
     expect(files).toContain('greeter.ts');
     expect(files).not.toContain('generated.ts');
   });
+
+  it('keeps hidden-directory files in projectFiles, for graph edges', () => {
+    const files = session.projectFiles().map((sf) => path.basename(sf.fileName));
+    expect(files).toContain('greeter.ts');
+    expect(files).toContain('generated.ts');
+  });
 });

@@ -9,17 +9,20 @@ import { deadExports } from './graph/dead-exports/dead-exports.js';
 import { rename } from './refactors/rename/rename.js';
 import { typeLoopholes } from './types/loopholes/loopholes.js';
 
-/** Every shipped TypeScript tool, registered. */
+/**
+ * Every shipped TypeScript tool, registered in the alphabetical order
+ * the CLI and MCP listings display (the registry sorts regardless).
+ */
 export function createTsRegistry(): ToolRegistry {
   const registry = new ToolRegistry();
+  registry.register(floatingPromises);
+  registry.register(llmTells);
   registry.register(longComments);
   registry.register(staleRefs);
-  registry.register(llmTells);
-  registry.register(floatingPromises);
   registry.register(dupeFunctions);
   registry.register(importCycles);
   registry.register(deadExports);
-  registry.register(typeLoopholes);
   registry.register(rename);
+  registry.register(typeLoopholes);
   return registry;
 }

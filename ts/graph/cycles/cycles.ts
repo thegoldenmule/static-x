@@ -1,6 +1,8 @@
 import path from 'node:path';
 import type { Finding, Tool } from '../../../core/tool/index.js';
+import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
 import type { TsProjectSession } from '../../project/index.js';
+import { hasHiddenDirSegment, toProjectRelative } from '../../project/index.js';
 import type { ImportEdge, ImportGraph } from '../import-graph.js';
 import { buildImportGraph } from '../import-graph.js';
 
@@ -11,10 +13,6 @@ import { buildImportGraph } from '../import-graph.js';
  */
 
 export type ImportCyclesInput = Record<string, never>;
-
-function toRelative(rootPath: string, file: string): string {
-  return path.relative(rootPath, file).split(path.sep).join('/');
-}
 
 /**
  * Total order on edges from one file: start position, then end position,
@@ -135,10 +133,14 @@ function shortestLoop(
 
 /**
  * One finding per import cycle in the graph. Pure over the graph value:
- * `rootPath` is used only to render project-relative paths. Findings
- * are sorted by anchor path; members, adjacency, and the displayed
- * loop are all ordered, so output is deterministic for a given graph
- * regardless of edge order.
+ * `rootPath` is used only to render project-relative paths and to
+ * classify hidden-directory members. Hidden-directory files (generated
+ * output the graph keeps for edge completeness) are never finding
+ * subjects: the anchor is the lexicographically-first non-hidden
+ * member, and a component living entirely under hidden directories is
+ * skipped. Findings are sorted by anchor path; members, adjacency, and
+ * the displayed loop are all ordered, so output is deterministic for a
+ * given graph regardless of edge order.
  */
 export function findCycles(graph: ImportGraph, rootPath: string): Finding[] {
   const nodes = new Set<string>();
@@ -169,16 +171,18 @@ export function findCycles(graph: ImportGraph, rootPath: string): Finding[] {
     const typeOnly = innerEdges.every((e) => e.typeOnly);
 
     const files = component
-      .map((file) => ({ file, relative: toRelative(rootPath, file) }))
+      .map((file) => ({ file, relative: toProjectRelative(rootPath, file) }))
       .sort((a, b) => (a.relative < b.relative ? -1 : 1));
-    const anchor = files[0];
+    const anchor = files.find((f) => !hasHiddenDirSegment(path.relative(rootPath, f.file)));
     if (anchor === undefined) continue;
 
     const innerAdjacency = new Map<string, string[]>();
     for (const member of component) {
       innerAdjacency.set(member, (adjacency.get(member) ?? []).filter((t) => members.has(t)));
     }
-    const loop = shortestLoop(anchor.file, innerAdjacency).map((f) => toRelative(rootPath, f));
+    const loop = shortestLoop(anchor.file, innerAdjacency).map((f) =>
+      toProjectRelative(rootPath, f),
+    );
     const loopText = loop.join(' → ');
     const size = component.length;
     const groupNote =
@@ -187,7 +191,9 @@ export function findCycles(graph: ImportGraph, rootPath: string): Finding[] {
         : '';
     const message = typeOnly
       ? `Type-only import cycle: ${loopText}. Every edge is \`import type\`, so the cycle is ` +
-        'erased at runtime — legal and common, but it still tangles the module structure.' +
+        'erased at runtime — legal and common, but it still tangles the module structure; ' +
+        'break it the same way as a value cycle, by extracting the shared types into a ' +
+        'module both sides import.' +
         groupNote
       : `Import cycle: ${loopText}. Import cycles make initialization order fragile and ` +
         'defeat tree-shaking; break the cycle by extracting the shared piece into a module ' +
@@ -210,6 +216,7 @@ export function findCycles(graph: ImportGraph, rootPath: string): Finding[] {
         severity: typeOnly ? 'info' : 'warning',
         data: {
           name: anchor.relative,
+          kind: typeOnly ? 'type-only' : 'value',
           files: files.map((f) => f.relative),
           size,
           typeOnly,
@@ -224,15 +231,15 @@ export function findCycles(graph: ImportGraph, rootPath: string): Finding[] {
 export const importCycles: Tool<ImportCyclesInput, Finding[], TsProjectSession> = {
   name: 'ts/graph/cycles',
   description:
-    'Finds import cycles as strongly-connected components of the resolved module graph — ' +
-    'every import, re-export, dynamic import, and require resolved through the compiler ' +
-    'module resolution, tsconfig paths aliases included — one finding per cycle group, so ' +
-    'overlapping loops through the same files report once. Value cycles are warnings: they ' +
-    'make initialization order fragile and defeat tree-shaking. Cycles whose every edge is ' +
-    'import type are info: erased at runtime, legal, but structural debt. Break a cycle by ' +
-    'extracting the shared piece into a module both sides import.',
+    'Finds import cycles (graph.cycle) as strongly-connected components of the resolved ' +
+    'module graph — every import, re-export, dynamic import, and require resolved through ' +
+    'the compiler module resolution, tsconfig paths aliases included — one finding per ' +
+    'cycle group, so overlapping loops through the same files report once. Value cycles ' +
+    'are warnings: they make initialization order fragile and defeat tree-shaking. Cycles ' +
+    'whose every edge is import type are info: erased at runtime, legal, but structural ' +
+    'debt. Break a cycle by extracting the shared piece into a module both sides import.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  outputSchema: { type: 'array', items: { $ref: '#/definitions/finding' } },
+  outputSchema: FINDINGS_ARRAY_SCHEMA,
   run(session) {
     return Promise.resolve(findCycles(buildImportGraph(session), session.rootPath));
   },

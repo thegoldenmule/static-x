@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import type { Finding, Tool } from '../../../core/tool/index.js';
+import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { collectCommentRanges, toBlocks } from '../collect.js';
 
@@ -65,10 +66,7 @@ export const longComments: Tool<LongCommentsInput, Finding[], TsProjectSession> 
     },
     additionalProperties: false,
   },
-  outputSchema: {
-    type: 'array',
-    items: { $ref: '#/definitions/finding' },
-  },
+  outputSchema: FINDINGS_ARRAY_SCHEMA,
   run(session, input) {
     return Promise.resolve(
       session.sourceFiles().flatMap((sourceFile) => findLongCommentsInFile(sourceFile, input)),

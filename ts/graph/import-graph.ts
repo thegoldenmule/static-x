@@ -5,11 +5,12 @@ import type { TsProjectSession } from '../project/index.js';
 
 /**
  * Shared module-graph infrastructure (not a registered tool). Walks
- * every project source file for static imports, re-exports, dynamic
- * `import('...')` with a literal specifier, and `import x = require`,
- * then resolves each specifier through the compiler's own module
- * resolution — the program's options carry the real tsconfig
- * paths/baseUrl, so aliases behave exactly as tsc sees them.
+ * every project file for static imports, re-exports, dynamic
+ * `import('...')` with a literal specifier, `import x = require`, and
+ * bare `require('...')` calls, then resolves each specifier through
+ * the compiler's own module resolution — the program's options carry
+ * the real tsconfig paths/baseUrl, so aliases behave exactly as tsc
+ * sees them.
  */
 
 export interface ImportEdge {
@@ -110,7 +111,9 @@ function importClauseTypeOnly(clause: ts.ImportClause | undefined): boolean {
  * consumes X from y), so re-export chains keep public API alive
  * through entry points. Dynamic imports count only with a literal
  * specifier (directly or via `new URL(literal, import.meta.url)`) —
- * a computed one names no file to resolve.
+ * a computed one names no file to resolve. Bare `require('...')`
+ * calls count too — CommonJS sources under allowJs load modules that
+ * way — and consume everything, like `import x = require`.
  */
 export function collectModuleRefs(sourceFile: ts.SourceFile): ModuleRef[] {
   const refs: ModuleRef[] = [];
@@ -161,6 +164,20 @@ export function collectModuleRefs(sourceFile: ts.SourceFile): ModuleRef[] {
         typeOnly: node.isTypeOnly,
         range: rangeOf(sourceFile, node),
       });
+    } else if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'require'
+    ) {
+      const argument = node.arguments[0];
+      if (argument !== undefined && ts.isStringLiteralLike(argument)) {
+        refs.push({
+          specifier: argument.text,
+          names: ['*'],
+          typeOnly: false,
+          range: rangeOf(sourceFile, node),
+        });
+      }
     }
     node.forEachChild(visit);
   };
@@ -169,9 +186,13 @@ export function collectModuleRefs(sourceFile: ts.SourceFile): ModuleRef[] {
 }
 
 /**
- * The project's resolved module graph. Only edges landing inside the
- * project survive (same membership rules as session.sourceFiles(): not
- * a declaration file, not node_modules, under the project root). A
+ * The project's resolved module graph. Both endpoints follow
+ * session.projectFiles() membership — not a declaration file, not
+ * node_modules, under the project root — which, unlike
+ * session.sourceFiles(), keeps files under hidden directories:
+ * generated output is never a finding subject, but its imports are
+ * real at runtime, so it still contributes consumption and cycle
+ * edges. Edges resolving outside that membership are dropped. A
  * type-only edge still consumes names — types are real symbols —
  * typeOnly matters only to cycle analysis.
  */
@@ -181,7 +202,7 @@ export function buildImportGraph(session: TsProjectSession): ImportGraph {
   const consumedNames = new Map<string, Set<string>>();
   const importers = new Map<string, Set<string>>();
 
-  for (const sourceFile of session.sourceFiles()) {
+  for (const sourceFile of session.projectFiles()) {
     const from = path.resolve(sourceFile.fileName);
     for (const ref of collectModuleRefs(sourceFile)) {
       const resolved = ts.resolveModuleName(

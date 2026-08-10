@@ -34,7 +34,14 @@ describe('findCycles', () => {
       code: 'graph.cycle',
       severity: 'warning',
       range: { start: { line: 3, character: 0 } },
-      data: { name: 'a.ts', files: ['a.ts', 'b.ts'], size: 2, typeOnly: false, confidence: 'high' },
+      data: {
+        name: 'a.ts',
+        kind: 'value',
+        files: ['a.ts', 'b.ts'],
+        size: 2,
+        typeOnly: false,
+        confidence: 'high',
+      },
     });
     expect(findings[0]?.message).toContain('a.ts → b.ts → a.ts');
   });
@@ -101,21 +108,52 @@ describe('findCycles', () => {
     expect(JSON.stringify(reversed)).toBe(JSON.stringify(findings));
   });
 
-  it('downgrades an all-type-only cycle to info', () => {
+  it('downgrades an all-type-only cycle to info, still advising the fix', () => {
     const findings = findCycles(
       graphOf(edge('a.ts', 'b.ts', 0, true), edge('b.ts', 'a.ts', 0, true)),
       ROOT,
     );
     expect(findings).toHaveLength(1);
-    expect(findings[0]).toMatchObject({ severity: 'info', data: { typeOnly: true } });
+    expect(findings[0]).toMatchObject({
+      severity: 'info',
+      data: { typeOnly: true, kind: 'type-only' },
+    });
     expect(findings[0]?.message).toContain('Type-only import cycle');
+    // Actionability parity with the value-cycle message: the remedy is
+    // the same extraction.
+    expect(findings[0]?.message).toContain('extracting the shared types');
   });
 
   it('keeps a mixed value/type cycle at warning', () => {
     const findings = findCycles(graphOf(edge('a.ts', 'b.ts', 0, true), edge('b.ts', 'a.ts')), ROOT);
     expect(findings).toHaveLength(1);
-    expect(findings[0]).toMatchObject({ severity: 'warning', data: { typeOnly: false } });
+    expect(findings[0]).toMatchObject({
+      severity: 'warning',
+      data: { typeOnly: false, kind: 'value' },
+    });
     expect(findings[0]?.message).toContain('Import cycle');
+  });
+
+  it('anchors on the first non-hidden member when a cycle passes through a hidden directory', () => {
+    const findings = findCycles(
+      graphOf(edge('src/a.ts', 'src/.gen/g.ts', 2), edge('src/.gen/g.ts', 'src/a.ts', 1)),
+      ROOT,
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      file: path.join(ROOT, 'src/a.ts'),
+      range: { start: { line: 2, character: 0 } },
+      data: { name: 'src/a.ts', files: ['src/.gen/g.ts', 'src/a.ts'], size: 2 },
+    });
+    expect(findings[0]?.message).toContain('src/a.ts → src/.gen/g.ts → src/a.ts');
+  });
+
+  it('skips components living entirely under hidden directories', () => {
+    const findings = findCycles(
+      graphOf(edge('.gen/x.ts', '.gen/y.ts'), edge('.gen/y.ts', '.gen/x.ts')),
+      ROOT,
+    );
+    expect(findings).toEqual([]);
   });
 
   it('anchors at the lexicographically-first member with its in-cycle import range', () => {
@@ -195,10 +233,11 @@ describe('ts/graph/cycles on the fixture project', () => {
   const session = TsProjectSession.open(FIXTURE);
   afterAll(() => session.dispose());
 
-  it('flags exactly the two planted cycles and nothing else', async () => {
+  it('flags exactly the three planted cycles and nothing else', async () => {
     const findings = await importCycles.run(session, {});
     expect(findings.map((f) => [f.data?.name, f.data?.size, f.severity])).toEqual([
       ['src/cycle-a.ts', 3, 'warning'],
+      ['src/hid-a.ts', 2, 'warning'],
       ['src/type-a.ts', 2, 'info'],
     ]);
   });
@@ -212,6 +251,7 @@ describe('ts/graph/cycles on the fixture project', () => {
       range: { start: { line: 2, character: 0 }, end: { line: 2, character: 34 } },
       data: {
         name: 'src/cycle-a.ts',
+        kind: 'value',
         files: ['src/cycle-a.ts', 'src/cycle-b.ts', 'src/cycle-c.ts'],
         size: 3,
         typeOnly: false,
@@ -226,21 +266,39 @@ describe('ts/graph/cycles on the fixture project', () => {
 
   it('downgrades the type-only cycle to info, anchored on its import line', async () => {
     const findings = await importCycles.run(session, {});
-    expect(findings[1]).toMatchObject({
+    const typeCycle = findings.find((f) => f.data?.name === 'src/type-a.ts');
+    expect(typeCycle).toMatchObject({
       file: path.join(FIXTURE, 'src', 'type-a.ts'),
       code: 'graph.cycle',
       severity: 'info',
       range: { start: { line: 2, character: 0 }, end: { line: 2, character: 38 } },
       data: {
         name: 'src/type-a.ts',
+        kind: 'type-only',
         files: ['src/type-a.ts', 'src/type-b.ts'],
         size: 2,
         typeOnly: true,
         confidence: 'high',
       },
     });
-    expect(findings[1]?.message).toContain(
+    expect(typeCycle?.message).toContain(
       'Type-only import cycle: src/type-a.ts → src/type-b.ts → src/type-a.ts',
     );
+  });
+
+  it('reports the cycle through the hidden directory anchored on the project-owned file', async () => {
+    const findings = await importCycles.run(session, {});
+    const hidden = findings.find((f) => f.data?.name === 'src/hid-a.ts');
+    expect(hidden).toMatchObject({
+      file: path.join(FIXTURE, 'src', 'hid-a.ts'),
+      code: 'graph.cycle',
+      severity: 'warning',
+      data: {
+        kind: 'value',
+        files: ['src/.gen/hcycle.ts', 'src/hid-a.ts'],
+        size: 2,
+      },
+    });
+    expect(hidden?.message).toContain('src/hid-a.ts → src/.gen/hcycle.ts → src/hid-a.ts');
   });
 });

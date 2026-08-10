@@ -2,8 +2,9 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import ts from 'typescript';
 import type { Finding, Range, Tool } from '../../../core/tool/index.js';
+import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
 import type { TsProjectSession } from '../../project/index.js';
-import { isTestFile } from '../../project/index.js';
+import { isTestFile, toProjectRelative } from '../../project/index.js';
 
 /**
  * Finds structurally identical function bodies (dupes.function) by
@@ -190,7 +191,7 @@ function byFileThenPosition(a: LocatedShape, b: LocatedShape): number {
 export const dupeFunctions: Tool<DupeFunctionsInput, Finding[], TsProjectSession> = {
   name: 'ts/dupes/functions',
   description:
-    'Finds structurally identical function bodies by hashing the AST shape of each body — ' +
+    'Finds structurally identical function bodies (dupes.function) by hashing the AST shape of each body — ' +
     'identifier names and literal values excluded — so renamed copies still match. Only ' +
     'bodies are compared: signatures, modifiers (async, generators), and return types are ' +
     'not part of the key. Exact duplicates (identical body tokens; formatting and comments ' +
@@ -214,7 +215,7 @@ export const dupeFunctions: Tool<DupeFunctionsInput, Finding[], TsProjectSession
     },
     additionalProperties: false,
   },
-  outputSchema: { type: 'array', items: { $ref: '#/definitions/finding' } },
+  outputSchema: FINDINGS_ARRAY_SCHEMA,
   run(session, input) {
     const includeTests = input.includeTests ?? false;
     const groups = new Map<string, LocatedShape[]>();
@@ -231,8 +232,7 @@ export const dupeFunctions: Tool<DupeFunctionsInput, Finding[], TsProjectSession
       }
     }
 
-    const relative = (file: string): string =>
-      path.relative(session.rootPath, file).split(path.sep).join('/');
+    const relative = (file: string): string => toProjectRelative(session.rootPath, file);
     const findings: Finding[] = [];
     for (const [key, members] of groups) {
       if (members.length < 2) continue;
@@ -267,6 +267,7 @@ export const dupeFunctions: Tool<DupeFunctionsInput, Finding[], TsProjectSession
             // never silences every anonymous duplicate in the project.
             name:
               member.name === ANONYMOUS ? `${relative(member.file)}:${ANONYMOUS}` : member.name,
+            kind: exact ? 'exact' : 'structural',
             group,
             peers,
             nodes: member.nodes,

@@ -1,5 +1,7 @@
 import ts from 'typescript';
 import type { Finding, Range, Severity, Tool } from '../../../core/tool/index.js';
+import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
+import { unwrapParens } from '../../ast/expressions.js';
 import { truncateFlat } from '../../ast/truncate.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { isTestFile } from '../../project/index.js';
@@ -41,12 +43,6 @@ function truncateName(text: string): string {
 
 /** Where an `any` annotation sits; parameters and returns are contagion points. */
 type AnyPosition = 'parameter' | 'return' | 'other';
-
-function unwrapParens(node: ts.Expression): ts.Expression {
-  let current = node;
-  while (ts.isParenthesizedExpression(current)) current = current.expression;
-  return current;
-}
 
 /**
  * The nested assertion of a double-cast (`x as unknown as T`), reached
@@ -303,7 +299,7 @@ export const typeLoopholes: Tool<LoopholesInput, Finding[], TsProjectSession> = 
     },
     additionalProperties: false,
   },
-  outputSchema: { type: 'array', items: { $ref: '#/definitions/finding' } },
+  outputSchema: FINDINGS_ARRAY_SCHEMA,
   run(session, input) {
     return Promise.resolve(
       session

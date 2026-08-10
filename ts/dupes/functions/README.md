@@ -6,18 +6,18 @@ Function declarations, function expressions, arrow functions, and class methods 
 
 Nested functions participate twice: once standalone and once as part of the enclosing body's shape, so one pasted outer function containing a large inner function yields a group for each — fixing the outer pair resolves both. Small bodies collide by coincidence, so functions below `minNodes` body-subtree nodes are skipped; the default of 35 is calibrated so trivial one-liners never group. Test files are skipped by default — duplicate test scaffolding is usually deliberate — and `includeTests` brings them back.
 
-**Exempt:** getters and setters (accessor boilerplate), constructors (conventionally parallel injection/assignment boilerplate), bodiless overload signatures and ambient declarations, functions below `minNodes`, and test files (`*.test.ts(x)` / `*.spec.ts(x)`) unless `includeTests` is set.
+**Exempt:** getters and setters (accessor boilerplate), constructors (conventionally parallel injection/assignment boilerplate), bodiless overload signatures and ambient declarations, functions below `minNodes`, and test files (`*.test.*` / `*.spec.*` with any TypeScript extension: `.ts`/`.tsx`/`.mts`/`.cts`) unless `includeTests` is set.
 
 ## Input
 
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `minNodes` | `35` | Minimum body-subtree node count for a function to participate |
-| `includeTests` | `false` | Also scan `*.test.ts(x)` / `*.spec.ts(x)` files |
+| `includeTests` | `false` | Also scan `*.test.*` / `*.spec.*` files (`.ts`/`.tsx`/`.mts`/`.cts`) |
 
 ## Output
 
-`Finding[]` with code `dupes.function`, one per member of each duplicate group, range covering the whole function, and `data: { name, group, peers, nodes, exact, confidence }` where `name` is the function's declared or inferred name (file-qualified `'src/foo.ts:(anonymous)'` when none, so ignoring one anonymous duplicate never silences them all), `group` is a 12-hex-char id shared by the whole group, `peers` lists the other members as `{ file, line }` with project-relative paths and **1-based** lines (finding ranges stay 0-based), `nodes` is the body-subtree size, and `exact` marks members with an identical-token twin.
+`Finding[]` with code `dupes.function`, one per member of each duplicate group, range covering the whole function, and `data: { name, kind, group, peers, nodes, exact, confidence }` where `name` is the function's declared or inferred name (file-qualified `'src/foo.ts:(anonymous)'` when none, so ignoring one anonymous duplicate never silences them all), `kind` is `exact` or `structural`, `group` is a 12-hex-char id shared by the whole group, `peers` lists the other members as `{ file, line }` with project-relative paths and **1-based** lines (finding ranges stay 0-based), `nodes` is the body-subtree size, and `exact` marks members with an identical-token twin.
 
 ```sh
 static-x ts/dupes/functions --project path/to/project --input '{"includeTests": true}'

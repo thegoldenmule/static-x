@@ -1,6 +1,7 @@
 import path from 'node:path';
 import ts from 'typescript';
 import type { Finding, Tool } from '../../../core/tool/index.js';
+import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { declaredNames, literalVocabulary, nodeAt } from '../../ast/declarations.js';
 import { collectCommentRanges } from '../collect.js';
@@ -211,7 +212,7 @@ export const staleRefs: Tool<StaleRefsInput, Finding[], TsProjectSession> = {
     },
     additionalProperties: false,
   },
-  outputSchema: { type: 'array', items: { $ref: '#/definitions/finding' } },
+  outputSchema: FINDINGS_ARRAY_SCHEMA,
   run(session, input) {
     const checker = session.checker();
     const projectNames = new Set<string>();

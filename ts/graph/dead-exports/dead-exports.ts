@@ -1,8 +1,9 @@
 import path from 'node:path';
 import ts from 'typescript';
 import type { Finding, Range, Tool } from '../../../core/tool/index.js';
+import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
 import type { TsProjectSession } from '../../project/index.js';
-import { isTestFile } from '../../project/index.js';
+import { isTestFile, toProjectRelative } from '../../project/index.js';
 import { buildImportGraph, collectModuleRefs } from '../import-graph.js';
 
 /**
@@ -143,21 +144,8 @@ function scanShimImports(shimPath: string, projectFiles: ReadonlySet<string>): s
   const text = ts.sys.readFile(shimPath);
   if (text === undefined) return [];
   const sourceFile = ts.createSourceFile(shimPath, text, ts.ScriptTarget.Latest, true);
+  // collectModuleRefs covers static, dynamic, and require('./x') forms.
   const specifiers = collectModuleRefs(sourceFile).map((ref) => ref.specifier);
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === 'require'
-    ) {
-      const argument = node.arguments[0];
-      if (argument !== undefined && ts.isStringLiteralLike(argument)) {
-        specifiers.push(argument.text);
-      }
-    }
-    node.forEachChild(visit);
-  };
-  visit(sourceFile);
 
   const shimDir = path.dirname(shimPath);
   const entries: string[] = [];
@@ -280,10 +268,15 @@ function scanExtraRoots(
 }
 
 function firstLineRange(sourceFile: ts.SourceFile): Range {
-  return {
-    start: { line: 0, character: 0 },
-    end: sourceFile.getLineAndCharacterOfPosition(sourceFile.getLineEndOfPosition(0)),
-  };
+  // getLineEndOfPosition(0) trips a falsy-zero bug inside TypeScript on
+  // an empty file (getEnd() === 0 recomputes the end as NaN and the
+  // position lookup throws), so an empty file gets an explicit
+  // zero-width range instead.
+  const end =
+    sourceFile.getEnd() === 0
+      ? { line: 0, character: 0 }
+      : sourceFile.getLineAndCharacterOfPosition(sourceFile.getLineEndOfPosition(0));
+  return { start: { line: 0, character: 0 }, end };
 }
 
 export interface FileAuditOptions {
@@ -393,7 +386,7 @@ export const deadExports: Tool<DeadExportsInput, Finding[], TsProjectSession> = 
     },
     additionalProperties: false,
   },
-  outputSchema: { type: 'array', items: { $ref: '#/definitions/finding' } },
+  outputSchema: FINDINGS_ARRAY_SCHEMA,
   run(session, input) {
     const graph = buildImportGraph(session);
     const checker = session.checker();
@@ -410,7 +403,7 @@ export const deadExports: Tool<DeadExportsInput, Finding[], TsProjectSession> = 
     const findings: Finding[] = [];
     for (const sourceFile of files) {
       const file = path.resolve(sourceFile.fileName);
-      const relative = path.relative(rootPath, file).split(path.sep).join('/');
+      const relative = toProjectRelative(rootPath, file);
       const isEntry =
         entryFiles.has(file) ||
         isFrameworkEntry(relative) ||
@@ -462,6 +455,14 @@ export const deadExports: Tool<DeadExportsInput, Finding[], TsProjectSession> = 
         }),
       );
     }
+    // Program discovery order shifts with unrelated import edits, so
+    // sort by position for deterministic output, like the sibling tools.
+    findings.sort(
+      (a, b) =>
+        (a.file < b.file ? -1 : a.file > b.file ? 1 : 0) ||
+        a.range.start.line - b.range.start.line ||
+        a.range.start.character - b.range.start.character,
+    );
     return Promise.resolve(findings);
   },
 };

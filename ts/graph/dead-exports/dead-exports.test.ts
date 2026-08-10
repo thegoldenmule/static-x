@@ -40,6 +40,12 @@ describe('collectModuleRefs', () => {
     expect(refs.map((r) => r.names)).toEqual([['*'], ['*'], ['*'], ['*']]);
   });
 
+  it('records a bare require() call as consuming everything', () => {
+    const refs = refsOf(`const mod = require('./m');\nrequire(dynamic);\nother('./x');`);
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({ specifier: './m', names: ['*'], typeOnly: false });
+  });
+
   it('records re-exported names against the source module', () => {
     const refs = refsOf(`export { a as b } from './y';`);
     expect(refs[0]?.names).toEqual(['a']);
@@ -230,8 +236,50 @@ describe('ts/graph/dead-exports on the fixture project', () => {
       { code: 'graph.dead-export', name: 'unusedHelper', file: 'util.ts' },
       { code: 'graph.dead-export', name: 'unusedWidget', file: 'widget.ts' },
       { code: 'graph.dead-file', name: 'src/ambient.ts', file: 'ambient.ts' },
+      { code: 'graph.dead-file', name: 'src/empty.ts', file: 'empty.ts' },
       { code: 'graph.dead-file', name: 'src/orphan.ts', file: 'orphan.ts' },
+      { code: 'graph.dead-file', name: 'src/requirer.ts', file: 'requirer.ts' },
     ]);
+  });
+
+  it('returns findings sorted by file, then position', async () => {
+    const findings = await deadExports.run(session, {});
+    const keys = findings.map(
+      (f) => [f.file, f.range.start.line, f.range.start.character] as const,
+    );
+    const sorted = [...keys].sort(
+      (a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0) || a[1] - b[1] || a[2] - b[2],
+    );
+    expect(keys).toEqual(sorted);
+  });
+
+  it('handles an empty source file without crashing, hedged like a script', async () => {
+    const findings = await deadExports.run(session, {});
+    const empty = findings.find((f) => f.data?.name === 'src/empty.ts');
+    expect(empty).toMatchObject({
+      code: 'graph.dead-file',
+      severity: 'info',
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+      data: { kind: 'file', confidence: 'low' },
+    });
+  });
+
+  it('keeps files alive that only hidden-directory program files import', async () => {
+    // src/.gen/gen.ts (generated, excluded from findings) imports
+    // only-gen.ts; src/.gen/hcycle.ts imports hid-a.ts.
+    const findings = await deadExports.run(session, {});
+    const names = new Set(findings.map((f) => f.data?.name));
+    expect(names.has('src/only-gen.ts')).toBe(false);
+    expect(names.has('onlyGen')).toBe(false);
+    expect(names.has('src/hid-a.ts')).toBe(false);
+    expect(names.has('hidA')).toBe(false);
+  });
+
+  it('keeps files alive that only a bare require() call consumes', async () => {
+    const findings = await deadExports.run(session, {});
+    expect(findings.some((f) => f.file.endsWith('req-target.ts'))).toBe(false);
+    // The requiring file itself is imported by nothing and stays dead.
+    expect(findings.some((f) => f.data?.name === 'src/requirer.ts')).toBe(true);
   });
 
   it('classifies value vs type exports with severity and confidence', async () => {
@@ -302,11 +350,21 @@ describe('ts/graph/dead-exports on the fixture project', () => {
     const findings = await deadExports.run(session, {});
     // geometry (import * as ns), tasks (dynamic import), aliased (paths
     // alias), legacy (import = require), cjs (side-effect import of an
-    // export= module), side (side-effect import; only its export is
-    // dead), lib (re-export chain through the entry), and star-source
-    // (star re-export from barrel) all stay alive.
+    // export= module), req-target (bare require call), side
+    // (side-effect import; only its export is dead), lib (re-export
+    // chain through the entry), and star-source (star re-export from
+    // barrel) all stay alive.
     expect(new Set(findings.map((f) => path.basename(f.file)))).toEqual(
-      new Set(['ambient.ts', 'orphan.ts', 'shapes.ts', 'side.ts', 'util.ts', 'widget.ts']),
+      new Set([
+        'ambient.ts',
+        'empty.ts',
+        'orphan.ts',
+        'requirer.ts',
+        'shapes.ts',
+        'side.ts',
+        'util.ts',
+        'widget.ts',
+      ]),
     );
   });
 
@@ -336,7 +394,9 @@ describe('ts/graph/dead-exports on the fixture project', () => {
       { code: 'graph.dead-export', name: 'sideNote', file: 'side.ts' },
       { code: 'graph.dead-export', name: 'unusedWidget', file: 'widget.ts' },
       { code: 'graph.dead-file', name: 'src/ambient.ts', file: 'ambient.ts' },
+      { code: 'graph.dead-file', name: 'src/empty.ts', file: 'empty.ts' },
       { code: 'graph.dead-file', name: 'src/orphan.ts', file: 'orphan.ts' },
+      { code: 'graph.dead-file', name: 'src/requirer.ts', file: 'requirer.ts' },
     ]);
     expect(await deadExports.run(session, { entryPoints: ['src/*.ts'] })).toEqual([]);
   });
@@ -349,13 +409,15 @@ describe('ts/graph/dead-exports on the fixture project', () => {
       { code: 'graph.dead-export', name: 'sideNote', file: 'side.ts' },
       { code: 'graph.dead-export', name: 'unusedWidget', file: 'widget.ts' },
       { code: 'graph.dead-file', name: 'src/ambient.ts', file: 'ambient.ts' },
+      { code: 'graph.dead-file', name: 'src/empty.ts', file: 'empty.ts' },
       { code: 'graph.dead-file', name: 'src/orphan.ts', file: 'orphan.ts' },
+      { code: 'graph.dead-file', name: 'src/requirer.ts', file: 'requirer.ts' },
     ]);
   });
 
   it('drops value-export confidence to medium when extraRoots are provided', async () => {
     const findings = await deadExports.run(session, { extraRoots: ['consumers-unrelated'] });
-    expect(findings).toHaveLength(7);
+    expect(findings).toHaveLength(9);
     const helper = findings.find((f) => f.data?.name === 'unusedHelper');
     expect(helper?.data).toMatchObject({ kind: 'value', confidence: 'medium' });
   });

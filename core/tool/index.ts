@@ -10,3 +10,4 @@ export type {
   Tool,
 } from './types.js';
 export { ToolRegistry } from './registry.js';
+export { FINDING_SCHEMA, FINDINGS_ARRAY_SCHEMA } from './finding-schema.js';
