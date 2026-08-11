@@ -7,6 +7,7 @@ import { classifyReferences } from '../references.js';
 import { declarationAt, resolveTarget, SYMBOL_TARGET_PROPERTIES } from '../../ast/targets.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
+import { removeBinding } from '../imports.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import {
   argumentIndexOf,
@@ -113,70 +114,6 @@ function classifyBindings(
     }));
 }
 
-/**
- * Remove the binding a file used to reach the inlined function.
- *
- * Once every call is gone the import names something that no longer
- * exists, which is a hard error rather than untidiness. Dropping the
- * whole statement when it bound nothing else keeps the file from
- * carrying an empty import clause.
- */
-function removeBinding(reference: ts.Node, sourceFile: ts.SourceFile): TextEdit | undefined {
-  const specifier = reference.parent;
-  if (!specifier) return undefined;
-  const at = (offset: number) => sourceFile.getLineAndCharacterOfPosition(offset);
-
-  // A re-export of something that no longer exists is TS2305, so the
-  // line goes with the declaration it named.
-  if (ts.isExportSpecifier(specifier)) {
-    const named = specifier.parent;
-    if (named.elements.length > 1) {
-      const index = named.elements.indexOf(specifier);
-      const start =
-        index === 0 ? specifier.getStart(sourceFile) : named.elements[index - 1]!.getEnd();
-      const end = index === 0 ? named.elements[1]!.getStart(sourceFile) : specifier.getEnd();
-      return { range: { start: at(start), end: at(end) }, newText: '' };
-    }
-    const statement = named.parent;
-    const text = sourceFile.getFullText();
-    let end = statement.getEnd();
-    while (end < text.length && text[end] !== '\n') end++;
-    if (end < text.length) end++;
-    return { range: { start: at(statement.getStart(sourceFile)), end: at(end) }, newText: '' };
-  }
-
-  if (!ts.isImportSpecifier(specifier)) return undefined;
-  const named = specifier.parent;
-  const clause = named.parent;
-  const statement = clause.parent;
-
-  if (named.elements.length > 1) {
-    // Take the comma that joins it to a neighbour, so the list stays valid.
-    const index = named.elements.indexOf(specifier);
-    const start =
-      index === 0
-        ? specifier.getStart(sourceFile)
-        : named.elements[index - 1]!.getEnd();
-    const end =
-      index === 0 ? named.elements[1]!.getStart(sourceFile) : specifier.getEnd();
-    return { range: { start: at(start), end: at(end) }, newText: '' };
-  }
-  if (clause.name) {
-    // `import Default, { only }` — the default binding stays.
-    return {
-      range: { start: at(clause.name.getEnd()), end: at(named.getEnd()) },
-      newText: '',
-    };
-  }
-  const text = sourceFile.getFullText();
-  let end = statement.getEnd();
-  while (end < text.length && text[end] !== '\n') end++;
-  if (end < text.length) end++;
-  return {
-    range: { start: at(statement.getStart(sourceFile)), end: at(end) },
-    newText: '',
-  };
-}
 
 /** The span that removes a declaration along with its own line. */
 function declarationSpan(

@@ -46,6 +46,7 @@ Every tool here also takes `files`, a list of paths to report findings in, so a 
 - `ast/` — shared AST helpers: declaration-site tests, symbol targeting, structural node identity, the class/interface hierarchy index, name/preview truncation
 - `async/`, `comments/`, `dupes/`, `graph/`, `refactors/`, `types/` — the tools
 - `refactors/` also holds what every refactoring shares: the in-memory typecheck guard, the reference
-  classifier, the wrapper around TypeScript's own refactoring engine, and the `WorkspaceEdit`
-  conversion — see [the roadmap](../ROADMAP.md#shared-machinery)
+  classifier, the wrapper around TypeScript's own refactoring engine, selection addressing,
+  signature and substitution analysis, import bookkeeping, and the `WorkspaceEdit` conversion — see
+  [the roadmap](../ROADMAP.md#shared-machinery)
 - `registry.ts` — registers every shipped tool for the CLI and MCP adapters

@@ -6,6 +6,7 @@ import { tokenKey } from '../../ast/structural.js';
 import { declarationAt, resolveTarget, SYMBOL_TARGET_PROPERTIES } from '../../ast/targets.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
+import { bindingSpanOf } from '../imports.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import { classifyReferences, type ClassifiedReference } from '../references.js';
 import { unalias } from '../substitution.js';
@@ -293,21 +294,6 @@ interface Span {
   end: number;
 }
 
-/** Removing one name from a `{ a, b }` list takes its separator too. */
-function elementSpan(
-  element: ts.Node,
-  elements: readonly ts.Node[],
-  sourceFile: ts.SourceFile,
-): Span {
-  const index = elements.indexOf(element);
-  const previous = index > 0 ? elements[index - 1] : undefined;
-  if (previous) return { start: previous.getEnd(), end: element.getEnd() };
-  const next = elements[1];
-  return {
-    start: element.getStart(sourceFile),
-    end: next ? next.getStart(sourceFile) : element.getEnd(),
-  };
-}
 
 /**
  * A node's own lines, plus a blank line it would otherwise leave
@@ -332,32 +318,6 @@ function lineSpan(node: ts.Node, sourceFile: ts.SourceFile): Span {
   return { start, end };
 }
 
-/**
- * The span that unbinds the alias from one file.
- *
- * Once the declaration is gone, `import type { Id }` and
- * `export type { Id } from './types.js'` both name something that does
- * not exist — TS2305, a broken build rather than untidiness. The
- * re-export in particular is the one a project-wide edit forgets:
- * nothing in the barrel file changed, so nothing draws attention to it.
- */
-function bindingSpan(node: ts.Node, sourceFile: ts.SourceFile): Span | undefined {
-  const specifier = node.parent as ts.Node | undefined;
-  if (specifier && ts.isImportSpecifier(specifier)) {
-    const named = specifier.parent;
-    const clause = named.parent;
-    if (named.elements.length > 1) return elementSpan(specifier, named.elements, sourceFile);
-    // `import Default, { Id } from` keeps the default and loses the group.
-    if (clause.name) return { start: clause.name.getEnd(), end: named.getEnd() };
-    return lineSpan(clause.parent, sourceFile);
-  }
-  if (specifier && ts.isExportSpecifier(specifier)) {
-    const named = specifier.parent;
-    if (named.elements.length > 1) return elementSpan(specifier, named.elements, sourceFile);
-    return lineSpan(named.parent, sourceFile);
-  }
-  return undefined;
-}
 
 function toEdit(span: Span, sourceFile: ts.SourceFile, newText: string): TextEdit {
   return {
@@ -638,7 +598,7 @@ export const inlineTypeAlias: Tool<
 
     for (const binding of bindings) {
       const sourceFile = binding.node.getSourceFile();
-      const span = bindingSpan(binding.node, sourceFile);
+      const span = bindingSpanOf(binding.node, sourceFile);
       if (!span) continue;
       add(path.resolve(binding.file), toEdit(span, sourceFile, ''));
       if (binding.kind === 'export-specifier') {

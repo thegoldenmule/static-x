@@ -12,6 +12,7 @@ import {
 } from '../../ast/targets.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
+import { relativeSpecifier, resolvedModuleOf } from '../imports.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import { classifyReferences, isUse, isWrite, type ClassifiedReference } from '../references.js';
 import { userPreferences } from '../refactor-action.js';
@@ -98,7 +99,6 @@ export interface StaticFormOutput extends RefactorOutput {
 
 type Member = ts.MethodDeclaration | ts.PropertyDeclaration;
 
-const SOURCE_TO_IMPORT_EXTENSION: Record<string, string> = { '.mts': '.mjs', '.cts': '.cjs' };
 
 /**
  * The symbol a name ultimately denotes.
@@ -257,29 +257,7 @@ function parameterRemoval(
   };
 }
 
-/** A relative module specifier for `toFile`, as written from `fromFile`. */
-function relativeSpecifier(fromFile: string, toFile: string, withExtension: boolean): string {
-  const relative = path.relative(path.dirname(fromFile), toFile).split(path.sep).join('/');
-  const dotted = relative.startsWith('.') ? relative : `./${relative}`;
-  const extension = path.extname(dotted);
-  const stem = dotted.slice(0, dotted.length - extension.length);
-  return withExtension ? stem + (SOURCE_TO_IMPORT_EXTENSION[extension] ?? '.js') : stem;
-}
 
-/** Module file an import declaration resolves to, if any. */
-function resolvedModuleOf(
-  session: TsProjectSession,
-  declaration: ts.ImportDeclaration,
-): string | undefined {
-  if (!ts.isStringLiteral(declaration.moduleSpecifier)) return undefined;
-  const resolved = ts.resolveModuleName(
-    declaration.moduleSpecifier.text,
-    declaration.getSourceFile().fileName,
-    session.program().getCompilerOptions(),
-    ts.sys,
-  ).resolvedModule;
-  return resolved ? path.resolve(resolved.resolvedFileName) : undefined;
-}
 
 /**
  * Edits that bind `name` from `from` in `sourceFile`.
@@ -304,7 +282,7 @@ function importEdits(
       !ts.isNamedImports(bindings) ||
       declaration.importClause?.isTypeOnly === true ||
       bindings.elements.length === 0 ||
-      resolvedModuleOf(session, declaration) !== from
+      resolvedModuleOf(declaration, session.program().getCompilerOptions()) !== from
     ) {
       continue;
     }

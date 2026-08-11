@@ -5,6 +5,7 @@ import type { Position, TextEdit, Tool, WorkspaceEdit } from '../../../core/tool
 import { declarationAt, resolveTarget, SYMBOL_TARGET_PROPERTIES } from '../../ast/targets.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
+import { rangeOfElement, removeBinding } from '../imports.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import { classifyReferences, isUse, isWrite } from '../references.js';
 import { describeReferences, locationOf } from '../signatures.js';
@@ -322,58 +323,7 @@ function isInTypePosition(node: ts.Node): boolean {
   return false;
 }
 
-/**
- * Remove the binding a file used to reach the inlined constant.
- *
- * Once every read is gone the import names something that no longer
- * exists — TS2305, a hard error rather than untidiness — and a re-export
- * of it is the same error one module further out.
- */
-function removeBinding(reference: ts.Node, sourceFile: ts.SourceFile): TextEdit | undefined {
-  const specifier = reference.parent;
-  if (!specifier) return undefined;
-  const at = (offset: number) => sourceFile.getLineAndCharacterOfPosition(offset);
-  const wholeLine = (statement: ts.Node): TextEdit => {
-    const text = sourceFile.getFullText();
-    let end = statement.getEnd();
-    while (end < text.length && text[end] !== '\n') end++;
-    if (end < text.length) end++;
-    return { range: { start: at(statement.getStart(sourceFile)), end: at(end) }, newText: '' };
-  };
 
-  if (ts.isExportSpecifier(specifier)) {
-    const named = specifier.parent;
-    if (named.elements.length > 1) {
-      return { range: rangeOfElement(specifier, named.elements, sourceFile, at), newText: '' };
-    }
-    return wholeLine(named.parent);
-  }
-
-  if (!ts.isImportSpecifier(specifier)) return undefined;
-  const named = specifier.parent;
-  const clause = named.parent;
-  if (named.elements.length > 1) {
-    return { range: rangeOfElement(specifier, named.elements, sourceFile, at), newText: '' };
-  }
-  if (clause.name) {
-    // `import Default, { only }` — the default binding stays.
-    return { range: { start: at(clause.name.getEnd()), end: at(named.getEnd()) }, newText: '' };
-  }
-  return wholeLine(clause.parent);
-}
-
-/** The span that takes one element of a list along with its comma. */
-function rangeOfElement(
-  element: ts.Node,
-  elements: ts.NodeArray<ts.Node>,
-  sourceFile: ts.SourceFile,
-  at: (offset: number) => Position,
-): { start: Position; end: Position } {
-  const index = elements.indexOf(element);
-  const start = index === 0 ? element.getStart(sourceFile) : elements[index - 1]!.getEnd();
-  const end = index === 0 ? elements[1]!.getStart(sourceFile) : element.getEnd();
-  return { start: at(start), end: at(end) };
-}
 
 /** Removes the declarator — and its statement, when it was the only one. */
 function removeDeclarator(
@@ -385,7 +335,7 @@ function removeDeclarator(
   const at = (offset: number) => sourceFile.getLineAndCharacterOfPosition(offset);
 
   if (list.declarations.length > 1) {
-    return { range: rangeOfElement(declaration, list.declarations, sourceFile, at), newText: '' };
+    return { range: rangeOfElement(declaration, list.declarations, sourceFile), newText: '' };
   }
 
   const text = sourceFile.getFullText();

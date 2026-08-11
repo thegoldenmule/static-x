@@ -9,6 +9,7 @@ import { buildImportGraph } from '../../graph/import-graph.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { isTestFile, toProjectRelative } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
+import { bindingSpanOf } from '../imports.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import { classifyReferences, type ClassifiedReference, type ReferenceKind } from '../references.js';
 
@@ -219,61 +220,8 @@ function statementSpan(node: ts.Node, sourceFile: ts.SourceFile): Span {
   return { start, end };
 }
 
-/** Removing one name from a `{ a, b }` list takes its separator too. */
-function elementSpan(
-  element: ts.Node,
-  elements: readonly ts.Node[],
-  sourceFile: ts.SourceFile,
-): Span {
-  const index = elements.indexOf(element);
-  const previous = index > 0 ? elements[index - 1] : undefined;
-  // Taking the comma before is only possible when there is one; the
-  // first name takes the comma after it instead.
-  if (previous) return { start: previous.getEnd(), end: element.getEnd() };
-  const next = index === 0 ? elements[1] : undefined;
-  return {
-    start: element.getStart(sourceFile),
-    end: next ? next.getStart(sourceFile) : element.getEnd(),
-  };
-}
 
-/**
- * The span that unbinds the symbol from one importing file: the
- * specifier alone when the clause binds other names too, the whole
- * import statement when it does not.
- */
-function importBindingSpan(node: ts.Node, sourceFile: ts.SourceFile): Span | undefined {
-  const parent = node.parent as ts.Node | undefined;
-  if (parent && ts.isImportSpecifier(parent)) {
-    const named = parent.parent;
-    const clause = named.parent;
-    if (named.elements.length > 1) return elementSpan(parent, named.elements, sourceFile);
-    // `import Default, { X } from` keeps the default and loses the group.
-    if (clause.name) return { start: clause.name.getEnd(), end: named.getEnd() };
-    return statementSpan(clause.parent, sourceFile);
-  }
-  if (parent && ts.isNamespaceImport(parent)) {
-    const clause = parent.parent;
-    if (clause.name) return { start: clause.name.getEnd(), end: parent.getEnd() };
-    return statementSpan(clause.parent, sourceFile);
-  }
-  if (parent && ts.isImportClause(parent)) {
-    if (parent.namedBindings && parent.name) {
-      return { start: parent.name.getStart(sourceFile), end: parent.namedBindings.getStart(sourceFile) };
-    }
-    return statementSpan(parent.parent, sourceFile);
-  }
-  return undefined;
-}
 
-/** The span that drops a re-export: the specifier, or the whole line. */
-function exportSpecifierSpan(node: ts.Node, sourceFile: ts.SourceFile): Span | undefined {
-  const parent = node.parent as ts.Node | undefined;
-  if (!parent || !ts.isExportSpecifier(parent)) return undefined;
-  const named = parent.parent;
-  if (named.elements.length > 1) return elementSpan(parent, named.elements, sourceFile);
-  return statementSpan(named.parent, sourceFile);
-}
 
 function mergeSpans(spans: readonly Span[]): Span[] {
   const sorted = [...spans].sort((a, b) => a.start - b.start || a.end - b.end);
@@ -525,8 +473,8 @@ export const safeDelete: Tool<SafeDeleteInput, SafeDeleteOutput, TsProjectSessio
       }
       const span =
         reference.kind === 'import-binding'
-          ? importBindingSpan(reference.node, reference.node.getSourceFile())
-          : exportSpecifierSpan(reference.node, reference.node.getSourceFile());
+          ? bindingSpanOf(reference.node, reference.node.getSourceFile())
+          : bindingSpanOf(reference.node, reference.node.getSourceFile());
       if (!span) {
         throw new Error(
           `The ${reference.kind} at ${at(reference)} is not a shape safe-delete can unbind; ` +

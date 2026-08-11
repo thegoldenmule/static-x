@@ -12,6 +12,8 @@ import {
 } from '../../ast/targets.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
+import { relativeSpecifier, resolvedModuleOf, scopeAt } from '../imports.js';
+import { reindent } from '../layout.js';
 import { moveSymbol } from '../move-symbol/move-symbol.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import { classifyReferences, isUse, type ClassifiedReference } from '../references.js';
@@ -87,16 +89,7 @@ interface ImportRequest {
   typeOnly: boolean;
 }
 
-const SOURCE_TO_IMPORT_EXTENSION: Record<string, string> = { '.mts': '.mjs', '.cts': '.cjs' };
 
-/** A relative module specifier for `toFile`, as written from `fromFile`. */
-function relativeSpecifier(fromFile: string, toFile: string, withExtension: boolean): string {
-  const relative = path.relative(path.dirname(fromFile), toFile).split(path.sep).join('/');
-  const dotted = relative.startsWith('.') ? relative : `./${relative}`;
-  const extension = path.extname(dotted);
-  const stem = dotted.slice(0, dotted.length - extension.length);
-  return withExtension ? stem + (SOURCE_TO_IMPORT_EXTENSION[extension] ?? '.js') : stem;
-}
 
 /**
  * An identifier that refers to something rather than naming it. Property
@@ -135,17 +128,6 @@ function references(root: ts.Node): ts.Identifier[] {
   return found;
 }
 
-/** Symbols visible at `site`, first declaration of each name winning. */
-function scopeAt(checker: ts.TypeChecker, site: ts.Node): Map<string, ts.Symbol> {
-  const scope = new Map<string, ts.Symbol>();
-  // SymbolFlags.All, not Value|Type: an imported binding's own flags are
-  // Alias whatever it aliases, so a narrower filter omits every import
-  // and reports a fully-populated module scope as empty.
-  for (const symbol of checker.getSymbolsInScope(site, ts.SymbolFlags.All)) {
-    if (!scope.has(symbol.name)) scope.set(symbol.name, symbol);
-  }
-  return scope;
-}
 
 /**
  * The span that removes a node along with its own line and the blank
@@ -186,27 +168,6 @@ function lineSpanOf(node: ts.Node, sourceFile: ts.SourceFile): { start: number; 
   return { start, end };
 }
 
-/**
- * Re-indent a block of source lifted out of one nesting depth into
- * another.
- *
- * Only whitespace *outside* a template literal may be touched: the
- * indentation inside a multi-line template is string content, and
- * shifting it changes the value the program produces without changing
- * anything a typecheck can see. Rather than track which lines are inside
- * one, a member containing a multi-line template keeps its original
- * indentation and the caller says so in a warning.
- */
-function reindent(text: string, from: number, to: string): string {
-  return text
-    .split('\n')
-    .map((line, index) => {
-      if (index === 0) return to + line;
-      const stripped = line.slice(0, from).replace(/^[ \t]*/, '') + line.slice(from);
-      return stripped.length === 0 ? '' : to + stripped;
-    })
-    .join('\n');
-}
 
 /** Whether a node contains a template literal spanning several lines. */
 function hasMultilineTemplate(node: ts.Node, sourceFile: ts.SourceFile): boolean {
@@ -340,20 +301,6 @@ function importStatement(
   return `import ${modifier}${clause} from ${quote}${specifier}${quote};`;
 }
 
-/** Module file an import declaration resolves to, if any. */
-function resolvedModuleOf(
-  session: TsProjectSession,
-  declaration: ts.ImportDeclaration,
-): string | undefined {
-  if (!ts.isStringLiteral(declaration.moduleSpecifier)) return undefined;
-  const resolved = ts.resolveModuleName(
-    declaration.moduleSpecifier.text,
-    declaration.getSourceFile().fileName,
-    session.program().getCompilerOptions(),
-    ts.sys,
-  ).resolvedModule;
-  return resolved ? path.resolve(resolved.resolvedFileName) : undefined;
-}
 
 /**
  * What the pruning pass took out of a file, so the pass that adds
@@ -417,7 +364,7 @@ function importEdits(
           bindings === undefined ||
           !ts.isNamedImports(bindings) ||
           declaration.importClause?.isTypeOnly !== request.typeOnly ||
-          resolvedModuleOf(session, declaration) !== target
+          resolvedModuleOf(declaration, session.program().getCompilerOptions()) !== target
         ) {
           continue;
         }
@@ -602,7 +549,7 @@ function dependencyImports(
     const typeOnly = (resolved.flags & ts.SymbolFlags.Value) === 0;
     const binding = declarations[0];
     const specifierOf = (statement: ts.ImportDeclaration): ImportOrigin => {
-      const origin = resolvedModuleOf(session, statement);
+      const origin = resolvedModuleOf(statement, session.program().getCompilerOptions());
       return origin === undefined
         ? { kind: 'package', text: (statement.moduleSpecifier as ts.StringLiteral).text }
         : { kind: 'file', file: origin };

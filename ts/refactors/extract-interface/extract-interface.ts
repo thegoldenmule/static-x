@@ -5,6 +5,8 @@ import type { TextEdit, Tool, WorkspaceEdit } from '../../../core/tool/index.js'
 import { declarationAt, resolveTarget, SYMBOL_TARGET_PROPERTIES } from '../../ast/targets.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
+import { relativeSpecifier, resolvedModuleOf, scopeAt } from '../imports.js';
+import { reindent } from '../layout.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import { classifyReferences, type ClassifiedReference } from '../references.js';
 import { userPreferences } from '../refactor-action.js';
@@ -97,16 +99,7 @@ interface Rewrite {
   newText: string;
 }
 
-const SOURCE_TO_IMPORT_EXTENSION: Record<string, string> = { '.mts': '.mjs', '.cts': '.cjs' };
 
-/** A relative module specifier for `toFile`, as written from `fromFile`. */
-function relativeSpecifier(fromFile: string, toFile: string, withExtension: boolean): string {
-  const relative = path.relative(path.dirname(fromFile), toFile).split(path.sep).join('/');
-  const dotted = relative.startsWith('.') ? relative : `./${relative}`;
-  const extension = path.extname(dotted);
-  const stem = dotted.slice(0, dotted.length - extension.length);
-  return withExtension ? stem + (SOURCE_TO_IMPORT_EXTENSION[extension] ?? '.js') : stem;
-}
 
 /** Statement text for one import, in the style the project writes. */
 function importStatement(
@@ -131,20 +124,6 @@ function importStatement(
   return `import ${addition.typeOnly ? 'type ' : ''}{ ${alias} } from ${quote}${specifier}${quote};`;
 }
 
-/** Module file an import declaration resolves to, if any. */
-function resolvedModuleOf(
-  session: TsProjectSession,
-  declaration: ts.ImportDeclaration,
-): string | undefined {
-  if (!ts.isStringLiteral(declaration.moduleSpecifier)) return undefined;
-  const resolved = ts.resolveModuleName(
-    declaration.moduleSpecifier.text,
-    declaration.getSourceFile().fileName,
-    session.program().getCompilerOptions(),
-    ts.sys,
-  ).resolvedModule;
-  return resolved ? path.resolve(resolved.resolvedFileName) : undefined;
-}
 
 /** The whole lines a statement occupies, so deleting it leaves no blank. */
 function lineSpanOf(node: ts.Node, sourceFile: ts.SourceFile): { start: number; end: number } {
@@ -157,34 +136,7 @@ function lineSpanOf(node: ts.Node, sourceFile: ts.SourceFile): { start: number; 
   return { start, end };
 }
 
-/**
- * Re-indent a block lifted from one nesting depth to another. Only
- * whitespace at the head of a line is touched, so nothing inside a
- * string can move — the caller warns when a member's signature holds a
- * multi-line template literal type, where even that is content.
- */
-function reindent(text: string, from: number, to: string): string {
-  return text
-    .split('\n')
-    .map((line, index) => {
-      if (index === 0) return to + line;
-      const stripped = line.slice(0, from).replace(/^[ \t]*/, '') + line.slice(from);
-      return stripped.length === 0 ? '' : to + stripped;
-    })
-    .join('\n');
-}
 
-/** Names visible at a node, first declaration of each winning. */
-function scopeAt(checker: ts.TypeChecker, site: ts.Node): Map<string, ts.Symbol> {
-  const scope = new Map<string, ts.Symbol>();
-  // SymbolFlags.All, not Type: an imported binding's own flags are
-  // Alias whatever it aliases, so a narrower filter omits every import
-  // and reports a fully-populated module scope as empty.
-  for (const symbol of checker.getSymbolsInScope(site, ts.SymbolFlags.All)) {
-    if (!scope.has(symbol.name)) scope.set(symbol.name, symbol);
-  }
-  return scope;
-}
 
 /** The JSDoc block immediately above a node, verbatim. */
 function jsDocOf(node: ts.Node, sourceFile: ts.SourceFile): string | undefined {
@@ -831,7 +783,7 @@ export const extractInterface: Tool<
         const binding = (symbol.declarations ?? [])[0];
         if (binding && ts.isImportSpecifier(binding) && ts.isImportDeclaration(binding.parent.parent.parent)) {
           const statement = binding.parent.parent.parent;
-          const origin = resolvedModuleOf(session, statement);
+          const origin = resolvedModuleOf(statement, session.program().getCompilerOptions());
           requestImport(destinationFile, {
             name,
             origin:
@@ -997,7 +949,7 @@ export const extractInterface: Tool<
         const bindings = clause?.namedBindings;
         if (!bindings || !ts.isNamedImports(bindings)) continue;
         const survivors = bindings.elements.filter((element) => !removals.has(element));
-        const moduleFile = resolvedModuleOf(session, statement);
+        const moduleFile = resolvedModuleOf(statement, session.program().getCompilerOptions());
         const absorbed = pending.filter(
           (addition) =>
             addition.origin.kind === 'file' &&

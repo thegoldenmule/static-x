@@ -5,6 +5,7 @@ import type { TextEdit, Tool, WorkspaceEdit } from '../../../core/tool/index.js'
 import { declarationAt, resolveTarget, SYMBOL_TARGET_PROPERTIES } from '../../ast/targets.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
+import { relativeSpecifier } from '../imports.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import {
   applicableActions,
@@ -79,16 +80,7 @@ function boundNames(statement: ts.Statement): Set<string> {
   return names;
 }
 
-const SOURCE_TO_IMPORT_EXTENSION: Record<string, string> = { '.mts': '.mjs', '.cts': '.cjs' };
 
-/** A relative module specifier for `toFile`, as written from `fromFile`. */
-function relativeSpecifier(fromFile: string, toFile: string, withExtension: boolean): string {
-  const relative = path.relative(path.dirname(fromFile), toFile).split(path.sep).join('/');
-  const dotted = relative.startsWith('.') ? relative : `./${relative}`;
-  const extension = path.extname(dotted);
-  const stem = dotted.slice(0, dotted.length - extension.length);
-  return withExtension ? stem + (SOURCE_TO_IMPORT_EXTENSION[extension] ?? '.js') : stem;
-}
 
 interface ReExportFixes {
   edit: WorkspaceEdit;
