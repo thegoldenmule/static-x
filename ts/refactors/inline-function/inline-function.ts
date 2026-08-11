@@ -95,15 +95,22 @@ function readCounts(body: ts.Expression, names: ReadonlySet<string>): Map<string
   return counts;
 }
 
-/** Every import specifier that binds the target symbol. */
-function classifyImportBindings(
+/** Every import or re-export specifier that binds the target symbol. */
+function classifyBindings(
   session: TsProjectSession,
   file: string,
   offset: number,
-): { node: ts.Node; sourceFile: ts.SourceFile }[] {
+): { node: ts.Node; sourceFile: ts.SourceFile; kind: 'import' | 'export' }[] {
   return classifyReferences(session, file, offset)
-    .filter((reference) => reference.kind === 'import-binding')
-    .map((reference) => ({ node: reference.node, sourceFile: reference.node.getSourceFile() }));
+    .filter(
+      (reference) =>
+        reference.kind === 'import-binding' || reference.kind === 'export-specifier',
+    )
+    .map((reference) => ({
+      node: reference.node,
+      sourceFile: reference.node.getSourceFile(),
+      kind: reference.kind === 'import-binding' ? ('import' as const) : ('export' as const),
+    }));
 }
 
 /**
@@ -116,11 +123,32 @@ function classifyImportBindings(
  */
 function removeBinding(reference: ts.Node, sourceFile: ts.SourceFile): TextEdit | undefined {
   const specifier = reference.parent;
-  if (!specifier || !ts.isImportSpecifier(specifier)) return undefined;
+  if (!specifier) return undefined;
+  const at = (offset: number) => sourceFile.getLineAndCharacterOfPosition(offset);
+
+  // A re-export of something that no longer exists is TS2305, so the
+  // line goes with the declaration it named.
+  if (ts.isExportSpecifier(specifier)) {
+    const named = specifier.parent;
+    if (named.elements.length > 1) {
+      const index = named.elements.indexOf(specifier);
+      const start =
+        index === 0 ? specifier.getStart(sourceFile) : named.elements[index - 1]!.getEnd();
+      const end = index === 0 ? named.elements[1]!.getStart(sourceFile) : specifier.getEnd();
+      return { range: { start: at(start), end: at(end) }, newText: '' };
+    }
+    const statement = named.parent;
+    const text = sourceFile.getFullText();
+    let end = statement.getEnd();
+    while (end < text.length && text[end] !== '\n') end++;
+    if (end < text.length) end++;
+    return { range: { start: at(statement.getStart(sourceFile)), end: at(end) }, newText: '' };
+  }
+
+  if (!ts.isImportSpecifier(specifier)) return undefined;
   const named = specifier.parent;
   const clause = named.parent;
   const statement = clause.parent;
-  const at = (offset: number) => sourceFile.getLineAndCharacterOfPosition(offset);
 
   if (named.elements.length > 1) {
     // Take the comma that joins it to a neighbour, so the list stays valid.
@@ -311,6 +339,7 @@ export const inlineFunction: Tool<
     const uses = readCounts(body, parameterNames);
 
     const changes: Record<string, TextEdit[]> = {};
+    const warnings: string[] = [];
     const callSites: InlineSite[] = [];
     for (const reference of survey.calls) {
       const { call, sourceFile, signature } = resolveCall(checker, reference, callable, calleeName);
@@ -386,12 +415,19 @@ export const inlineFunction: Tool<
 
     if (input.keepDeclaration !== true) {
       // The bindings other files used to reach it now name nothing.
-      const importBindings = classifyImportBindings(session, target.file, target.offset);
-      for (const { node, sourceFile } of importBindings) {
+      const bindings = classifyBindings(session, target.file, target.offset);
+      for (const { node, sourceFile, kind } of bindings) {
         const removal = removeBinding(node, sourceFile);
         if (!removal) continue;
         const file = path.resolve(sourceFile.fileName);
         changes[file] = [...(changes[file] ?? []), removal];
+        if (kind === 'export') {
+          warnings.push(
+            `${path.relative(session.rootPath, file)} re-exported "${calleeName}"; inlining it ` +
+              "removes it from that module's public surface, which consumers outside this " +
+              'project would notice.',
+          );
+        }
       }
 
       const span = declarationSpan(
@@ -421,7 +457,7 @@ export const inlineFunction: Tool<
       edit,
       filesChanged,
       newDiagnostics,
-      warnings: [],
+      warnings,
       callSites,
       body: bodyText,
     };

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import ts from 'typescript';
-import { applyWorkspaceEdit } from '../../../core/edits/index.js';
+import { applyWorkspaceEdit, previewWorkspaceEdit } from '../../../core/edits/index.js';
 import type { Tool } from '../../../core/tool/index.js';
 import { resolveTarget } from '../../ast/targets.js';
 import type { TsProjectSession } from '../../project/index.js';
@@ -76,6 +76,53 @@ const ACTIONS: Record<ModuleForm, { refactor: string; action: string; needs: 'sy
     },
   };
 
+/**
+ * Where a namespace binding is used as a value rather than as
+ * something to reach through.
+ *
+ * `import * as ns` can only become named imports if every use is
+ * `ns.member`: the named form has no way to name the namespace object
+ * itself. TypeScript checks this loosely enough to offer the
+ * conversion anyway and then emit a default import, so the precondition
+ * is established here — and the resulting message names the line, which
+ * a diagnostic about a missing default export does not.
+ */
+function namespaceValueUses(
+  binding: ts.NamespaceImport,
+  sourceFile: ts.SourceFile,
+): { line: number; character: number }[] {
+  const name = binding.name.text;
+  const uses: { line: number; character: number }[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && node.text === name && node !== binding.name) {
+      const parent = node.parent as ts.Node | undefined;
+      const reachedThrough =
+        parent !== undefined &&
+        ((ts.isPropertyAccessExpression(parent) && parent.expression === node) ||
+          (ts.isQualifiedName(parent) && parent.left === node) ||
+          (ts.isElementAccessExpression(parent) && parent.expression === node));
+      if (!reachedThrough) {
+        const { line, character } = sourceFile.getLineAndCharacterOfPosition(
+          node.getStart(sourceFile),
+        );
+        uses.push({ line, character });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return uses;
+}
+
+/** The shape an import clause actually has, for verifying the result. */
+function clauseForm(statement: ts.ImportDeclaration): ModuleForm | 'none' {
+  const clause = statement.importClause;
+  if (!clause) return 'none';
+  if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) return 'namespace-import';
+  if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) return 'named-imports';
+  return clause.name ? 'default-import' : 'none';
+}
+
 /** The import declaration in `file` for `specifier`. */
 function importOf(sourceFile: ts.SourceFile, specifier: string): ts.ImportDeclaration {
   const matches = sourceFile.statements.filter(
@@ -150,7 +197,24 @@ export const moduleForm: Tool<ModuleFormInput, ModuleFormOutput, TsProjectSessio
       if (input.module === undefined) {
         throw new Error(`Converting to ${input.to} needs "module": the specifier to convert`);
       }
-      at = importOf(sourceFile, input.module).getStart(sourceFile);
+      const statement = importOf(sourceFile, input.module);
+      at = statement.getStart(sourceFile);
+
+      const bindings = statement.importClause?.namedBindings;
+      if (input.to === 'named-imports' && bindings && ts.isNamespaceImport(bindings)) {
+        const asValue = namespaceValueUses(bindings, sourceFile);
+        if (asValue.length > 0) {
+          throw new Error(
+            `"${bindings.name.text}" is used as a value at ` +
+              asValue
+                .slice(0, 3)
+                .map((use) => `${input.file}:${use.line + 1}:${use.character + 1}`)
+                .join(', ') +
+              `, not only as \`${bindings.name.text}.member\`. Named imports have no way to name ` +
+              'the namespace object itself, so this import cannot take that form.',
+          );
+        }
+      }
     }
 
     // The engine re-derives its own target and dispatches on that
@@ -176,6 +240,28 @@ export const moduleForm: Tool<ModuleFormInput, ModuleFormOutput, TsProjectSessio
       refactor: wanted.refactor,
       action: wanted.action,
     });
+
+    // The engine dispatches on a target it re-derives rather than on the
+    // action it was handed, so a listed action is not a promise about
+    // what it will do. Measured: asked for named imports at a namespace
+    // import it had itself offered that for, it emitted a default
+    // import instead. Checking the result is the only reliable version
+    // of "did it do what was asked".
+    if (wanted.needs === 'module' && input.module !== undefined) {
+      const after = ts.createSourceFile(
+        sourceFile.fileName,
+        (await previewWorkspaceEdit(edit)).get(file) ?? sourceFile.getFullText(),
+        ts.ScriptTarget.Latest,
+        true,
+      );
+      const produced = clauseForm(importOf(after, input.module));
+      if (produced !== input.to) {
+        throw new Error(
+          `TypeScript offered "${wanted.action}" and then produced a ${produced} instead. ` +
+            'That conversion is not available for this import, whatever the menu said.',
+        );
+      }
+    }
 
     const filesChanged = filesTouched(edit);
     const newDiagnostics = (await diagnosticsIntroducedBy(session, edit)).map((d) => d.text);

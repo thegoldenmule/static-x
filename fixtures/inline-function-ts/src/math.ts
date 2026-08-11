@@ -22,3 +22,8 @@ export function complex(a: number): number {
   const doubled = a * 2;
   return doubled + 1;
 }
+
+/** Re-exported through the barrel, so deleting it breaks that line too. */
+export function negate(value: number): number {
+  return -value;
+}

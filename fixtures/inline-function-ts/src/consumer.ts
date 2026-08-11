@@ -1,4 +1,4 @@
-import { difference, twice, shout } from './math.js';
+import { difference, twice, shout, negate } from './math.js';
 
 /** The precedence case: c - (a - b), never c - a - b. */
 export function gap(c: number): number {
@@ -17,4 +17,8 @@ function bump(): number {
 
 export function doubledBump(): number {
   return twice(bump());
+}
+
+export function flipped(n: number): number {
+  return negate(n);
 }

@@ -414,7 +414,7 @@ export const inlineParameter: Tool<
     // exists there but means something else is not, so it is checked
     // by symbol identity here.
     const inScope = new Map<string, ts.Symbol>();
-    for (const scoped of checker.getSymbolsInScope(body, ts.SymbolFlags.Value)) {
+    for (const scoped of checker.getSymbolsInScope(body, ts.SymbolFlags.All)) {
       if (!inScope.has(scoped.name)) inScope.set(scoped.name, unalias(checker, scoped));
     }
     for (const identifier of rootIdentifiers(common.node)) {

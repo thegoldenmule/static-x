@@ -55,6 +55,16 @@ describe('ts/refactors/module-form', () => {
     ).rejects.toThrow(/does not offer/);
   });
 
+  it('refuses a namespace used as a value, naming where', { timeout: 30_000 }, async () => {
+    // Named imports have no way to name the namespace object itself.
+    // TypeScript offers the conversion anyway and emits a default
+    // import that does not compile, so the precondition is checked here
+    // — and the message names the line, which TS1192 does not.
+    await expect(
+      moduleForm.run(session, { file: 'src/registry.ts', module: './tone.js', to: 'named-imports' }),
+    ).rejects.toThrow(/"tone" is used as a value at .*registry\.ts:4/s);
+  });
+
   it('reports which import it could not find', { timeout: 30_000 }, async () => {
     await expect(
       moduleForm.run(session, { file: 'src/app.ts', module: './nowhere.js', to: 'named-imports' }),

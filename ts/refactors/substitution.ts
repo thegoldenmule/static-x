@@ -238,8 +238,11 @@ export function captureConflicts(
   site: ts.Node,
   ignore: ReadonlySet<string>,
 ): CaptureConflict[] {
+  // SymbolFlags.All, not Value|Type: an imported binding's own flags
+  // are Alias, whatever it aliases, so a narrower filter omits every
+  // imported name and reports the whole scope as missing.
   const atSite = new Map<string, ts.Symbol>();
-  for (const symbol of checker.getSymbolsInScope(site, ts.SymbolFlags.Value | ts.SymbolFlags.Type)) {
+  for (const symbol of checker.getSymbolsInScope(site, ts.SymbolFlags.All)) {
     if (!atSite.has(symbol.name)) atSite.set(symbol.name, unalias(checker, symbol));
   }
 

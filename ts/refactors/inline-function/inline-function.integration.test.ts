@@ -69,6 +69,34 @@ describe('ts/refactors/inline-function', () => {
     );
   });
 
+  it('inlines a body that reads an imported binding', { timeout: 30_000 }, async () => {
+    // An imported binding's own symbol flags are Alias, not Value — so
+    // asking the checker for the Value|Type symbols in scope omits every
+    // import and reports the whole scope as missing. That refused
+    // essentially every real inline until it was found on a corpus.
+    const result = await inlineFunction.run(session, { symbol: 'isDone' });
+
+    expect(result.newDiagnostics).toEqual([]);
+    // The wrap is the documented conservative choice: correct always,
+    // occasionally one pair more than a person would write.
+    expect(await preview(result.edit, src('local.ts'))).toContain(
+      "return (status === Status.Ready) ? 'done' : 'waiting';",
+    );
+  });
+
+  it('removes a re-export of the function it inlined', { timeout: 30_000 }, async () => {
+    // barrel.ts re-exports negate; deleting the declaration without that
+    // line is TS2305, and the guard would refuse the whole inline.
+    const result = await inlineFunction.run(session, { symbol: 'negate' });
+
+    expect(result.newDiagnostics).toEqual([]);
+    expect(await preview(result.edit, src('barrel.ts'))).toBe(
+      "export { shout } from './math.js';\n",
+    );
+    // Leaving a module's public surface is worth saying out loud.
+    expect(result.warnings.join('\n')).toMatch(/public surface/);
+  });
+
   it('refuses a body that is not a single expression', { timeout: 30_000 }, async () => {
     await expect(inlineFunction.run(session, { symbol: 'complex' })).rejects.toThrow(
       /not a single expression/,
