@@ -5,6 +5,18 @@
   "type": "module",
   "private": true,
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "cli",
+    "core",
+    "ts",
+    "mcp",
+    "hooks",
+    "README.md",
+    "!**/*.test.ts"
+  ],
   "scripts": {
     "test": "vitest run",
     "prepare": "husky",
@@ -14,20 +26,22 @@
     "sx": "tsx cli/main.ts",
     "mcp": "tsx mcp/main.ts"
   },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "tsx": "^4.23.7",
+    "typescript": "^5.9.3",
+    "typescript-language-server": "^5.3.0",
+    "vscode-jsonrpc": "^9.0.1",
+    "vscode-languageserver-protocol": "^3.18.2"
+  },
   "devDependencies": {
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
-    "@modelcontextprotocol/sdk": "^1.30.0",
     "@types/node": "^26.1.2",
     "eslint": "^10.8.0",
     "husky": "^9.1.7",
-    "tsx": "^4.23.7",
-    "typescript": "^5.9.3",
     "typescript-eslint": "^8.66.0",
-    "typescript-language-server": "^5.3.0",
-    "vitest": "^4.1.10",
-    "vscode-jsonrpc": "^9.0.1",
-    "vscode-languageserver-protocol": "^3.18.2"
+    "vitest": "^4.1.10"
   },
   "bin": {
     "static-x": "cli/sx.mjs",
