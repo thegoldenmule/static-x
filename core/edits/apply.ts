@@ -32,11 +32,22 @@ export function applyTextEdits(text: string, edits: TextEdit[]): string {
 
   let result = text;
   let previousStart = Infinity;
+  let previous: (typeof resolved)[number] | undefined;
   for (const edit of resolved) {
     if (edit.end > previousStart) {
-      throw new Error('Overlapping text edits');
+      // Naming the pair matters: two passes that each edit an import
+      // clause produce this, and "overlapping text edits" alone leaves
+      // the caller to guess which of a hundred edits collided.
+      const show = (candidate: { start: number; end: number; newText: string }) =>
+        `[${candidate.start}, ${candidate.end}) -> ${JSON.stringify(
+          candidate.newText.length > 40 ? `${candidate.newText.slice(0, 40)}…` : candidate.newText,
+        )}`;
+      throw new Error(
+        `Overlapping text edits: ${show(edit)} overlaps ${previous ? show(previous) : '(none)'}`,
+      );
     }
     previousStart = edit.start;
+    previous = edit;
     result = result.slice(0, edit.start) + edit.newText + result.slice(edit.end);
   }
   return result;

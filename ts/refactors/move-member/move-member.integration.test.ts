@@ -197,6 +197,26 @@ describe('ts/refactors/move-member to module scope', () => {
     await expect(stat(src('nowhere/ship.ts'))).rejects.toThrow();
   });
 
+  it('folds the new name into a list it is also pruning', { timeout: 30_000 }, async () => {
+    // The consumer reaches ParseFault only through the static being
+    // moved, so the same import list loses `ParseFault` and gains
+    // `isFault`. Pruning replaces that list whole, so an insertion
+    // anchored inside it would overlap — nine files in a real corpus
+    // crashed on exactly this before the two passes shared one edit.
+    const result = await moveMember.run(session, {
+      symbol: 'isFault',
+      class: 'ParseFault',
+      file: src('faults.ts'),
+      toFile: 'src/faults.ts',
+    });
+
+    expect(result.newDiagnostics).toEqual([]);
+    expect(await preview(result.edit, src('reporting.ts'))).toContain(
+      "import { QuotaFault, TimeoutFault, isFault } from './faults.js';",
+    );
+    expect(await preview(result.edit, src('reporting.ts'))).toContain('if (isFault(error))');
+  });
+
   it('hands a module-level binding to move-symbol', { timeout: 30_000 }, async () => {
     const result = await moveMember.run(session, { symbol: 'slugify', toFile: 'src/freight.ts' });
 

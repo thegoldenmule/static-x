@@ -312,17 +312,27 @@ function importStatement(
  * sits inside that deletion, and `applyTextEdits` rejects the pair as
  * overlapping — so the two passes are ordered, and this is what the
  * first tells the second.
+ *
+ * Deleted statements and specifiers are the easy half. The half that
+ * bit: when some names in a list survive, pruning replaces the *whole*
+ * list in one edit, and a surviving name is exactly what the second pass
+ * wants to anchor to — an insertion strictly inside a replacement, which
+ * overlaps just as surely. So a rewritten list is carried as the edit
+ * itself, and the second pass folds its name into that one edit rather
+ * than emitting its own.
  */
 interface Pruned {
   edits: TextEdit[];
   statements: Set<ts.ImportDeclaration>;
   specifiers: Set<ts.ImportSpecifier>;
+  rewritten: Map<ts.NamedImports, { edit: TextEdit; names: string[] }>;
 }
 
 const NOTHING_PRUNED: Pruned = {
   edits: [],
   statements: new Set<ts.ImportDeclaration>(),
   specifiers: new Set<ts.ImportSpecifier>(),
+  rewritten: new Map<ts.NamedImports, { edit: TextEdit; names: string[] }>(),
 };
 
 /**
@@ -381,6 +391,14 @@ function importEdits(
       request.propertyName && request.propertyName !== request.name
         ? `${request.propertyName} as ${request.name}`
         : request.name;
+    const rewrite = pruned.rewritten.get(anchor.parent);
+    if (rewrite) {
+      // The list this name would sit in is already being replaced whole.
+      // Amend that edit instead of inserting inside it.
+      rewrite.names.push(alias);
+      rewrite.edit.newText = `{ ${rewrite.names.join(', ')} }`;
+      continue;
+    }
     edits.push({
       range: { start: at(anchor.getEnd()), end: at(anchor.getEnd()) },
       newText: `, ${alias}`,
@@ -451,6 +469,7 @@ function unusedImportEdits(
   const edits: TextEdit[] = [];
   const statements = new Set<ts.ImportDeclaration>();
   const specifiers = new Set<ts.ImportSpecifier>();
+  const rewritten = new Map<ts.NamedImports, { edit: TextEdit; names: string[] }>();
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
     const bindings = statement.importClause?.namedBindings;
@@ -467,10 +486,13 @@ function unusedImportEdits(
       // One replacement of the whole clause rather than one deletion per
       // name: two deletions in the same list overlap at the comma
       // between them.
-      edits.push({
+      const names = survivors.map((element) => element.getText(sourceFile));
+      const edit = {
         range: { start: at(bindings.getStart(sourceFile)), end: at(bindings.getEnd()) },
-        newText: `{ ${survivors.map((element) => element.getText(sourceFile)).join(', ')} }`,
-      });
+        newText: `{ ${names.join(', ')} }`,
+      };
+      edits.push(edit);
+      rewritten.set(bindings, { edit, names });
       continue;
     }
     const defaultName = statement.importClause?.name;
@@ -486,7 +508,7 @@ function unusedImportEdits(
     edits.push({ range: { start: at(span.start), end: at(span.end) }, newText: '' });
     statements.add(statement);
   }
-  return { edits, statements, specifiers };
+  return { edits, statements, specifiers, rewritten };
 }
 
 /**
