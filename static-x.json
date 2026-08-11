@@ -1,0 +1,44 @@
+{
+  "checks": {
+    "commit": {
+      "novelty": "changed-lines",
+      "tools": {
+        "ts/async/floating-promises": "block",
+        "ts/graph/cycles": "block",
+        "ts/dupes/functions": {
+          "level": "warn",
+          "minSeverity": "warning"
+        },
+        "ts/comments/long": "warn",
+        "ts/comments/llm-tells": "warn"
+      }
+    },
+    "push": {
+      "novelty": "baseline",
+      "tools": {
+        "ts/graph/cycles": "block",
+        "ts/graph/dead-exports": "warn",
+        "ts/comments/stale-refs": {
+          "level": "warn",
+          "minConfidence": "medium"
+        },
+        "ts/dupes/functions": {
+          "level": "warn",
+          "minSeverity": "warning"
+        }
+      }
+    },
+    "claude": {
+      "novelty": "changed-file",
+      "tools": {
+        "ts/async/floating-promises": "block",
+        "ts/types/loopholes": {
+          "level": "block",
+          "minSeverity": "warning"
+        },
+        "ts/comments/llm-tells": "warn",
+        "ts/comments/long": "warn"
+      }
+    }
+  }
+}

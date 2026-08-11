@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "static-x check claude --from claude --project \"${CLAUDE_PROJECT_DIR}\"",
+            "timeout": 60,
+            "statusMessage": "Checking with static-x..."
+          }
+        ]
+      }
+    ]
+  }
+}

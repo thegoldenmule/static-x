@@ -1,0 +1,12 @@
+#!/bin/sh
+# Installed by `static-x install`. The gate is configured in static-x.json,
+# not here — edit checks.commit there to change what this enforces.
+if command -v static-x >/dev/null 2>&1; then
+  bin=static-x
+elif [ -x node_modules/.bin/static-x ]; then
+  bin=node_modules/.bin/static-x
+else
+  echo "static-x not found — skipping checks" >&2
+  exit 0
+fi
+exec "$bin" check commit --from git-staged
