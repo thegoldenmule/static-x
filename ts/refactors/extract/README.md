@@ -10,6 +10,17 @@ Lifts a selection into a new function, constant, class method, or readonly field
 
 **Compile guard.** Before writing, the project is typechecked in memory with the edit applied. Any introduced diagnostic is returned in `newDiagnostics` and the edit is refused, even with `apply: true`. The guard is close to an oracle here — a bad extraction is a type error or a syntax error, not a silent change of meaning. It is what catches TypeScript's one remaining defect in this area: extracting to an *inner function* from inside a class method emits a nested `function` whose body still says `this`, which is `TS2683` under `strict`. Prefer the method scope there.
 
+## What it refuses
+
+Beyond a selection that is not a whole statement run or expression: **two string-literal positions where the literal is not a value but a fact the compiler reads out of the source.** TypeScript offers the extraction in both, performs it, and the guard reports nothing — which is the disqualifier this repo opens with, so both are refused before the engine is asked.
+
+| Position | What extraction does | What reports it |
+| --- | --- | --- |
+| A directive prologue — `'use client'`, `'use server'`, `'use strict'` | `const MODE = 'use client';` — an ordinary string, and the directive stops applying | nothing; the checker models no part of it |
+| A module specifier — `import('./m.js')`, `require('./m')` | the call still compiles while the module's type collapses from `typeof import("./m")` to `any`; a bundler loses the static reference | nothing |
+
+Only the *leading run* of string-expression statements is a prologue. A bare string further down a body is a no-op expression, and hoisting it is harmless, so it still extracts.
+
 ## Input
 
 | Option | Meaning |

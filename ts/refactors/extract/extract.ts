@@ -1,4 +1,5 @@
 import path from 'node:path';
+import ts from 'typescript';
 import { applyWorkspaceEdit } from '../../../core/edits/index.js';
 import type { Tool, WorkspaceEdit } from '../../../core/tool/index.js';
 import type { TsProjectSession } from '../../project/index.js';
@@ -56,6 +57,82 @@ const IDENTIFIER = /^[$_\p{ID_Start}][$‌‍\p{ID_Continue}]*$/u;
 
 function empty(): WorkspaceEdit {
   return { changes: {} };
+}
+
+/** The innermost node covering exactly the located range. */
+function nodeAt(sourceFile: ts.SourceFile, range: ts.TextRange): ts.Node | undefined {
+  let found: ts.Node | undefined;
+  const visit = (node: ts.Node): void => {
+    if (node.getStart(sourceFile) > range.pos || node.getEnd() < range.end) return;
+    if (node.getStart(sourceFile) === range.pos && node.getEnd() === range.end) found = node;
+    node.forEachChild(visit);
+  };
+  sourceFile.forEachChild(visit);
+  return found;
+}
+
+/**
+ * Whether a string literal is a directive prologue — `'use strict'`,
+ * `'use client'`, `'use server'`.
+ *
+ * A directive is a string literal *only* while it is the whole
+ * expression of a statement in the leading run of such statements. Bound
+ * to a name it is an ordinary string, which is exactly the damage:
+ * `const NAME = 'use client'` compiles identically and the file stops
+ * being a client component. Nothing downstream of the extraction can
+ * see that, because the bundler reads the prologue and the checker does
+ * not model it at all.
+ */
+function isDirective(node: ts.Node): boolean {
+  const statement = node.parent as ts.Node | undefined;
+  if (!statement || !ts.isExpressionStatement(statement) || statement.expression !== node) {
+    return false;
+  }
+  if (!ts.isStringLiteral(node) && !ts.isNoSubstitutionTemplateLiteral(node)) return false;
+
+  const container = statement.parent as ts.Node | undefined;
+  if (!container) return false;
+  const statements = ts.isSourceFile(container)
+    ? container.statements
+    : ts.isBlock(container) || ts.isModuleBlock(container)
+      ? container.statements
+      : undefined;
+  if (!statements) return false;
+
+  // Only the leading run counts. A bare string further down the body is
+  // a no-op expression, not a directive, and hoisting it is harmless.
+  for (const candidate of statements) {
+    if (candidate === statement) return true;
+    if (!ts.isExpressionStatement(candidate) || !ts.isStringLiteral(candidate.expression)) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a string literal is a module specifier the compiler resolves.
+ *
+ * `import('./m.js')` types its result from the literal itself. Replace
+ * the literal with a `const` holding the same text and the call still
+ * compiles — measured, no diagnostic — while its type collapses from
+ * `typeof import("./m")` to `any`, taking every downstream property
+ * check with it. Bundlers lose the static reference for the same
+ * reason.
+ */
+function isModuleSpecifier(node: ts.Node): boolean {
+  const parent = node.parent as ts.Node | undefined;
+  if (!parent) return false;
+  if (ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent)) {
+    return parent.moduleSpecifier === node;
+  }
+  if (ts.isExternalModuleReference(parent)) return parent.expression === node;
+  if (ts.isImportTypeNode(parent)) return true;
+  if (!ts.isCallExpression(parent) || parent.arguments[0] !== node) return false;
+  return (
+    parent.expression.kind === ts.SyntaxKind.ImportKeyword ||
+    (ts.isIdentifier(parent.expression) && parent.expression.text === 'require')
+  );
 }
 
 export const extract: Tool<ExtractInput, ExtractOutput, TsProjectSession> = {
@@ -118,6 +195,27 @@ export const extract: Tool<ExtractInput, ExtractOutput, TsProjectSession> = {
     });
     const at = { pos: located.range.pos, end: located.range.end };
     const selected = { text: located.text, line: located.line, kind: located.kind };
+
+    // Two string-literal positions where the literal is not a value but
+    // a fact the compiler reads out of the source. Binding either to a
+    // name compiles clean and loses that fact, so both are refused
+    // before TypeScript is asked — it offers the extraction in both
+    // cases and its output is wrong in both.
+    const node = nodeAt(located.sourceFile, located.range);
+    if (node && isDirective(node)) {
+      throw new Error(
+        `${located.text} at line ${String(located.line)} is a directive prologue, not a value. ` +
+          'Bound to a name it is an ordinary string and the directive stops applying — the ' +
+          'compiler models no part of this, so nothing would report it.',
+      );
+    }
+    if (node && isModuleSpecifier(node)) {
+      throw new Error(
+        `${located.text} at line ${String(located.line)} is a module specifier, which the ` +
+          'compiler resolves from the literal itself. Bound to a name the import still ' +
+          'compiles and its type collapses to `any`, and a bundler loses the static reference.',
+      );
+    }
 
     const scopes: ExtractScope[] = applicableActions(
       session,

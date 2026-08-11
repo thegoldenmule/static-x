@@ -131,3 +131,49 @@ describe('ts/refactors/extract apply mode', () => {
     });
   });
 });
+
+describe('ts/refactors/extract string literals the compiler reads', () => {
+  const session = TsProjectSession.open(FIXTURE);
+  afterAll(() => session.dispose());
+
+  // Both of these were shipped defects. TypeScript offers the
+  // extraction, performs it, and the guard reports nothing — the
+  // disqualifier this repo opens with, in its own tool.
+
+  it('refuses a directive prologue', async () => {
+    await expect(
+      extract.run(session, {
+        file: 'src/directives.ts',
+        select: "'use client'",
+        scope: 'constant_scope_0',
+        name: 'MODE',
+      }),
+    ).rejects.toThrow(/is a directive prologue, not a value/);
+  });
+
+  it('refuses a dynamic import specifier', async () => {
+    // Measured: hoisting it leaves the call compiling while the module's
+    // type collapses from `typeof import("./square")` to `any`.
+    await expect(
+      extract.run(session, {
+        file: 'src/directives.ts',
+        select: "'./square.js'",
+        scope: 'constant_scope_0',
+        name: 'SPECIFIER',
+      }),
+    ).rejects.toThrow(/is a module specifier/);
+  });
+
+  it('still extracts an ordinary string literal', async () => {
+    const result = await extract.run(session, {
+      file: 'src/directives.ts',
+      select: "'not a directive'",
+      scope: 'constant_scope_0',
+      name: 'LABEL',
+    });
+    expect(result.newDiagnostics).toEqual([]);
+    expect(await preview(result.edit, path.join(FIXTURE, 'src/directives.ts'))).toContain(
+      "const LABEL = 'not a directive';",
+    );
+  });
+});
