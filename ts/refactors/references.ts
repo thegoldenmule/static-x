@@ -282,3 +282,45 @@ export function classifyReferences(
   }
   return classified;
 }
+
+/**
+ * An identifier that refers to something rather than naming it.
+ *
+ * What survives the exclusions is the set of names the surrounding
+ * scope decides the meaning of — which is exactly the set that has to
+ * still resolve once code is copied somewhere else. A property name, a
+ * label, an import specifier and `new.target` all read as identifiers
+ * and none of them is a reference to anything a destination scope could
+ * fail to provide.
+ */
+export function isReference(node: ts.Identifier): boolean {
+  const parent = node.parent as ts.Node | undefined;
+  if (!parent) return false;
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+  if (ts.isQualifiedName(parent) && parent.right === node) return false;
+  if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
+  if (ts.isBindingElement(parent) && parent.propertyName === node) return false;
+  if (ts.isPropertyDeclaration(parent) && parent.name === node) return false;
+  if (ts.isPropertySignature(parent) && parent.name === node) return false;
+  if (ts.isMethodDeclaration(parent) && parent.name === node) return false;
+  if (ts.isMethodSignature(parent) && parent.name === node) return false;
+  if (ts.isGetAccessorDeclaration(parent) && parent.name === node) return false;
+  if (ts.isSetAccessorDeclaration(parent) && parent.name === node) return false;
+  if (ts.isImportSpecifier(parent) || ts.isNamespaceImport(parent)) return false;
+  if (ts.isImportClause(parent) && parent.name === node) return false;
+  if (ts.isLabeledStatement(parent) && parent.label === node) return false;
+  if (ts.isBreakOrContinueStatement(parent) && parent.label === node) return false;
+  if (parent.kind === ts.SyntaxKind.MetaProperty) return false;
+  return true;
+}
+
+/** Every identifier under `root` that refers to something. */
+export function referencesIn(root: ts.Node): ts.Identifier[] {
+  const found: ts.Identifier[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && isReference(node)) found.push(node);
+    node.forEachChild(visit);
+  };
+  visit(root);
+  return found;
+}

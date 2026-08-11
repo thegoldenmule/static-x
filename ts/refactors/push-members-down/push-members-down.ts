@@ -7,9 +7,9 @@ import { declarationAt, resolveTarget, SYMBOL_TARGET_PROPERTIES } from '../../as
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
 import { relativeSpecifier, removeBinding, resolvedModuleOf, scopeAt } from '../imports.js';
-import { reindent } from '../layout.js';
+import { reindent, removalSpans } from '../layout.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
-import { classifyReferences, isUse } from '../references.js';
+import { classifyReferences, isReference, isUse, referencesIn } from '../references.js';
 import { formatSettings, userPreferences } from '../refactor-action.js';
 import { sameBinding, unalias } from '../substitution.js';
 
@@ -83,11 +83,6 @@ interface ImportRequest {
   typeOnly: boolean;
 }
 
-interface Span {
-  start: number;
-  end: number;
-}
-
 /** A class in the compilation, with the file it was found in. */
 interface FoundClass {
   node: ts.ClassLikeDeclaration;
@@ -138,43 +133,7 @@ function columnOf(node: ts.Node): number {
   return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile, true)).character;
 }
 
-/**
- * An identifier that refers to something rather than naming it. What
- * remains after the exclusions is the set of names whose meaning the
- * surrounding scope decides — exactly the set that has to still resolve
- * once the code is copied somewhere else.
- */
-function isReference(node: ts.Identifier): boolean {
-  const parent = node.parent as ts.Node | undefined;
-  if (!parent) return false;
-  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
-  if (ts.isQualifiedName(parent) && parent.right === node) return false;
-  if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
-  if (ts.isBindingElement(parent) && parent.propertyName === node) return false;
-  if (ts.isPropertyDeclaration(parent) && parent.name === node) return false;
-  if (ts.isPropertySignature(parent) && parent.name === node) return false;
-  if (ts.isMethodDeclaration(parent) && parent.name === node) return false;
-  if (ts.isMethodSignature(parent) && parent.name === node) return false;
-  if (ts.isGetAccessorDeclaration(parent) && parent.name === node) return false;
-  if (ts.isSetAccessorDeclaration(parent) && parent.name === node) return false;
-  if (ts.isImportSpecifier(parent) || ts.isNamespaceImport(parent)) return false;
-  if (ts.isImportClause(parent) && parent.name === node) return false;
-  if (ts.isLabeledStatement(parent) && parent.label === node) return false;
-  if (ts.isBreakOrContinueStatement(parent) && parent.label === node) return false;
-  if (parent.kind === ts.SyntaxKind.MetaProperty) return false;
-  return true;
-}
 
-/** Every identifier under `root` that refers to something. */
-function referencesIn(root: ts.Node): ts.Identifier[] {
-  const found: ts.Identifier[] = [];
-  const visit = (node: ts.Node): void => {
-    if (ts.isIdentifier(node) && isReference(node)) found.push(node);
-    node.forEachChild(visit);
-  };
-  visit(root);
-  return found;
-}
 
 /** Every class and class expression in the compilation. */
 function classesIn(session: TsProjectSession): FoundClass[] {
@@ -315,61 +274,6 @@ function enclosingClass(node: ts.Node): ts.ClassLikeDeclaration | undefined {
   return undefined;
 }
 
-/**
- * Whole-line spans that remove `nodes` — their own lines, their leading
- * comments, and the blank line that separated each from what came
- * before.
- *
- * Taking the *preceding* blank rather than the following one keeps the
- * last member of a class from leaving an empty line above the closing
- * brace. A member that opens the class body has no preceding blank to
- * take, and keeping the following one would open the body with an empty
- * line, so those extend forward instead — bounded by the next span, so
- * two removals can never overlap. `applyTextEdits` rejects overlapping
- * edits, and pushing several members down removes several at once.
- */
-function removalSpans(sourceFile: ts.SourceFile, nodes: readonly ts.Node[]): Span[] {
-  const text = sourceFile.getFullText();
-  const lineStartAt = (offset: number): number => {
-    let at = offset;
-    while (at > 0 && text[at - 1] !== '\n') at--;
-    return at;
-  };
-
-  const raw = nodes
-    .map((node) => {
-      let start = lineStartAt(node.getStart(sourceFile, true));
-      while (start > 0) {
-        const previous = lineStartAt(start - 1);
-        if (text.slice(previous, start).trim() !== '') break;
-        start = previous;
-      }
-      let end = node.getEnd();
-      while (end < text.length && text[end] !== '\n') end++;
-      if (end < text.length) end++;
-      return { start, end };
-    })
-    .sort((a, b) => a.start - b.start);
-
-  const merged: Span[] = [];
-  for (const span of raw) {
-    const last = merged[merged.length - 1];
-    if (last && span.start <= last.end) last.end = Math.max(last.end, span.end);
-    else merged.push({ ...span });
-  }
-
-  for (const [index, span] of merged.entries()) {
-    if (!text.slice(0, span.start).trimEnd().endsWith('{')) continue;
-    const limit = merged[index + 1]?.start ?? text.length;
-    for (;;) {
-      const lineEnd = text.indexOf('\n', span.end);
-      if (lineEnd === -1 || lineEnd + 1 > limit) break;
-      if (text.slice(span.end, lineEnd).trim() !== '') break;
-      span.end = lineEnd + 1;
-    }
-  }
-  return merged;
-}
 
 /** Whether a node contains a template literal spanning several lines. */
 function hasMultilineTemplate(node: ts.Node): boolean {

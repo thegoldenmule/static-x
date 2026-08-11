@@ -7,7 +7,7 @@ import { declarationAt, resolveTarget, SYMBOL_TARGET_PROPERTIES } from '../../as
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
 import { relativeSpecifier, resolvedModuleOf, scopeAt } from '../imports.js';
-import { reindent } from '../layout.js';
+import { blankLinesAround, reindent, removalSpans } from '../layout.js';
 import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../output.js';
 import { classifyReferences, isUse, type ClassifiedReference } from '../references.js';
 import { userPreferences } from '../refactor-action.js';
@@ -232,75 +232,7 @@ function usageOf(root: ts.Node): Usage {
   return usage;
 }
 
-/**
- * Whole-line spans that remove `nodes` — their own lines, their JSDoc,
- * and the blank line that separated each from what came before.
- *
- * Taking the *preceding* blank rather than the following one keeps the
- * last member of a class from leaving an empty line above the closing
- * brace; a member that opens the body has no preceding blank to take, so
- * those extend forward instead, bounded by the next span so the two can
- * never overlap. `applyTextEdits` rejects overlapping edits, and this
- * tool removes several adjacent members by construction.
- */
-function removalSpans(sourceFile: ts.SourceFile, nodes: readonly ts.Node[]): Span[] {
-  const text = sourceFile.getFullText();
-  const lineStartAt = (offset: number): number => {
-    let at = offset;
-    while (at > 0 && text[at - 1] !== '\n') at--;
-    return at;
-  };
 
-  const raw = nodes
-    .map((node) => {
-      let start = lineStartAt(node.getStart(sourceFile, true));
-      while (start > 0) {
-        const previous = lineStartAt(start - 1);
-        if (text.slice(previous, start).trim() !== '') break;
-        start = previous;
-      }
-      let end = node.getEnd();
-      while (end < text.length && text[end] !== '\n') end++;
-      if (end < text.length) end++;
-      return { start, end };
-    })
-    .sort((a, b) => a.start - b.start);
-
-  const merged: Span[] = [];
-  for (const span of raw) {
-    const last = merged[merged.length - 1];
-    if (last && span.start <= last.end) last.end = Math.max(last.end, span.end);
-    else merged.push({ ...span });
-  }
-
-  for (const [index, span] of merged.entries()) {
-    if (!text.slice(0, span.start).trimEnd().endsWith('{')) continue;
-    const limit = merged[index + 1]?.start ?? text.length;
-    for (;;) {
-      const lineEnd = text.indexOf('\n', span.end);
-      if (lineEnd === -1 || lineEnd + 1 > limit) break;
-      if (text.slice(span.end, lineEnd).trim() !== '') break;
-      span.end = lineEnd + 1;
-    }
-  }
-  return merged;
-}
-
-/**
- * Blank lines a removal span opens and closes with. A span swallows the
- * separators around what it removes, so a replacement has to put them
- * back or the next member welds itself to it.
- */
-function blankLinesAround(text: string, span: Span): { before: string; after: string } {
-  const lines = text.slice(span.start, span.end).split('\n');
-  let before = 0;
-  while (before < lines.length - 1 && lines[before]!.trim() === '') before++;
-  let after = 0;
-  for (let index = lines.length - 2; index > before && lines[index]!.trim() === ''; index--) {
-    after++;
-  }
-  return { before: '\n'.repeat(before), after: '\n'.repeat(after) };
-}
 
 /** A statement's whole lines, including the blank line above it. */
 function lineSpanOf(node: ts.Node, sourceFile: ts.SourceFile): Span {
