@@ -10,7 +10,7 @@ start from the working tree.
 ```sh
 npm run typecheck                  # tsc, noEmit
 npm run lint                       # eslint, type-checked rules
-npx vitest run                     # 813 tests, ~42s wall (parallel; ~9 min of real compilation)
+npx vitest run                     # 835 tests, ~42s wall (parallel; ~9 min of real compilation)
 npx vitest run ts/refactors/rename # one file, or any path substring
 npx vitest run -t 'repoints every importer'   # one test by name
 npm run test:watch
@@ -18,6 +18,7 @@ npm run test:watch
 npm run sx -- ts/graph/cycles --project fixtures/graph-ts --format text   # note the `--`
 npm run sx -- check --list --project .          # the gates this project defines
 npm run sx -- check commit --project .          # what a pre-commit hook runs
+npm run sx -- ratchet --project .               # what could be tightened (dry run)
 npm run mcp                        # the MCP server on stdio
 ```
 
@@ -58,6 +59,11 @@ TypeScript defaults are `ts/checks.ts`, and their block/warn split is measured, 
 `async/floating-promises` and `graph/cycles` report nothing against this repository, so only those
 two block. A gate that blocks on taste gets `--no-verify`'d, and is then worth nothing on the day it
 catches a dropped promise.
+
+`baseline` and `ratchet` divide along one line: baseline **accepts** whatever it finds, which is what
+lets a gate go on a codebase that never had one; ratchet **only tightens**, and refuses the whole run
+while anything has regressed. Keep that split — a ratchet that quietly banked a regression would be
+worse than not having one. It is deliberately not a hook and not a CI step.
 
 `novelty` is the part that makes a gate installable, and the part to think hardest about when adding
 a tool to one. Unfiltered, the commit suite finds something in 79 of this repository's 141 source

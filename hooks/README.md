@@ -69,6 +69,38 @@ Commit the file. Later runs report only what came after. It names anything it ju
 
 A policy the event cannot supply the inputs for degrades to the next broader one and says so. Silence there would be the dangerous option — a gate that quietly stopped filtering looks exactly like a gate that found something real.
 
+## Ratcheting
+
+```sh
+static-x ratchet             # what could be tightened
+static-x ratchet --apply     # tighten it
+```
+
+`baseline` accepts whatever it finds; `ratchet` only ever tightens. That split is the whole design. Accepting is what lets you turn a gate on for a codebase that has never had one, and it is exactly the wrong behavior for banking progress — run `baseline` after a regression and you have recorded the regression.
+
+Three things it tightens, each provable from the project's own findings rather than from a policy someone has to keep current:
+
+- **The baseline shrinks** to what still reproduces. Every entry it drops is something you fixed.
+- **A `warn` tool becomes `block`** once it reports nothing at all. Not once it reports nothing *new* — a tool whose findings are merely baselined looks clean while the baseline holds, and the next deliberate re-record would turn all of them into blocking findings at once.
+- **The baseline policy retires** once the baseline empties: `novelty` drops to `none` and the file is deleted. There is nothing left to grandfather.
+
+```
+push: baseline 327 → 326 (1 entry resolved)
+  cli/format.ts|graph.dead-export|summary  gone
+```
+
+A regression refuses the whole run, banking nothing:
+
+```
+push: 1 finding regressed since the baseline was recorded — fix them, or
+      accept them deliberately with `static-x baseline`
+  cli/format.ts|graph.dead-export|RATCHET_PROBE  0 → 1
+```
+
+Ten fixes and one regression is still a refusal. Writing a baseline that accommodates the regression is what the other command is for.
+
+It is dry-run by default, like every mutating tool here, and **not a hook and not a CI step**. A ratchet that runs automatically locks in whatever strictness one machine reached on a good day, and the next person to push is blocked by someone else's luck. Run it when you want to bank progress.
+
 ## Exit codes
 
 `check` follows the CLI's: **0** clean (advisory findings included), **1** blocked, **2** could not run. A git hook rejects on 1 and lets 2 through, so a project mid-refactor can never leave you unable to commit.

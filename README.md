@@ -62,7 +62,7 @@ static-x ts/types/loopholes --project . --input '{"includeTests": false}'
 
 Usage is `static-x <tool> --project <root> [--input '<json>'] [--files <path>]... [--files-from <file|->] [--format json|text]`. Running with no arguments lists the available tools. Output is JSON on stdout — findings for analysis tools, a `WorkspaceEdit` plus status for refactors — so results pipe cleanly into `jq` or an LLM. Exit codes: `0` clean, `1` findings reported, `2` usage or execution error.
 
-Three subcommands sit alongside the tools, named without a slash so they can never collide with one: `check <suite>` runs a named group of tools over a single project session, `baseline` records what a suite reports now, and `install` writes the hooks that call them — see [hooks](hooks/README.md).
+Four subcommands sit alongside the tools, named without a slash so they can never collide with one: `check <suite>` runs a named group of tools over a single project session, `baseline` records what a suite reports now, `ratchet` tightens the gates as far as the project already allows, and `install` writes the hooks that call them — see [hooks](hooks/README.md).
 
 Each tool's README ([table here](ts/README.md)) documents its options, output shape, and what its findings mean. To use the tools from Claude Code conversationally, register the [MCP server](mcp/README.md).
 
