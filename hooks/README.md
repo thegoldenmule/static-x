@@ -1,69 +1,103 @@
-# Example hooks
-
-Working hooks that run static-x automatically — on commit, on push, and after Claude Code edits a file. Copy one, point it at the tools you care about, and it becomes a gate that rejects code before anyone reviews it.
-
-| File | Event | What it does |
-| --- | --- | --- |
-| [`git/pre-commit`](git/pre-commit) | git `pre-commit` | Runs per-file tools over the staged files; blocks the commit on findings |
-| [`git/pre-push`](git/pre-push) | git `pre-push` | Runs whole-project tools (import cycles by default); blocks the push on findings |
-| [`claude/reject-long-comments.mjs`](claude/reject-long-comments.mjs) | Claude Code `PostToolUse` | Checks the file Claude just wrote and hands findings back to the model to fix |
-| [`claude/settings.example.json`](claude/settings.example.json) | — | The `.claude/settings.json` block that registers the hook above |
-
-All four are configured by environment variables (`STATIC_X_TOOLS`, `STATIC_X_PROJECT`, `STATIC_X_BIN`) so the same script serves any tool combination. Thresholds, ignores, and severity floors belong in the project's `static-x.json`, which the CLI honors identically — see the [configuration table](../README.md#configuration).
-
-## The mechanism: `--files`
-
-Hooks know which files changed. Every analysis tool takes that list:
+# Hooks
 
 ```sh
-git diff --cached --name-only -z | static-x ts/comments/long --project . --files-from - --format text
-static-x ts/types/loopholes --project . --files src/api.ts --files src/db.ts
+static-x install
 ```
 
-What a file list narrows is **what gets reported**, not what gets analyzed. The symbol index, the import graph, and the duplicate groups still cover the whole project, because that is the only way the answers stay true: a comment in the changed file names symbols declared in files you didn't touch, and an import cycle you just created runs through files that haven't changed since last year. So a scoped run says exactly what a full run says about those files — it just doesn't mention the rest.
+That writes a pre-commit and a pre-push hook (into `.husky/` if the project uses husky, `.git/hooks/` otherwise), registers the Claude Code `PostToolUse` hook, and copies the default check suites into `static-x.json` where you can read and edit them. `--dry-run` shows what it would touch; `--target git|claude|config` narrows it.
 
-That has a consequence worth knowing when you pick tools per event. A cycle is reported if the changed file is anywhere in it, and a duplicate is reported with its peers wherever they live, but `ts/graph/dead-exports` reports an export as dead in the file that *declares* it. Delete the last import of something in `a.ts` and the finding lands in `b.ts` — which a commit-scoped run won't show you. That's why `pre-push` runs the graph tools unscoped.
-
-Practical details the scripts rely on:
-
-- **Paths can be relative to the project root, relative to the working directory, or absolute** — a hook running at a repo root against `--project packages/app` works without translating anything.
-- **Paths that name no source file are ignored**, so a raw `git diff --name-only` list (deleted files, markdown, lockfiles) can be piped in unfiltered.
-- **A list with no source files at all costs nothing**: static-x answers with no findings without loading the project, so a docs-only commit doesn't pay for a typecheck.
-- **Directories match everything beneath them** (`--files src/components`).
-- **A path the project's `tsconfig.json` doesn't include is ignored like any other non-source path.** If a scoped run says nothing about a file you expected findings in, check that the tsconfig actually covers it.
-- `ts/refactors/rename` rejects `--files` rather than accepting it: a partial file list would mean a partial refactor, which is a broken program.
-
-## Git hooks
+The scripts it writes hold no policy at all:
 
 ```sh
-cp hooks/git/pre-commit .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
+exec "$bin" check commit --from git-staged
 ```
 
-With husky, copy into `.husky/` instead. To check more than comment length:
+Everything the gate does lives in `static-x.json`. Changing what a hook enforces never means editing a shell script or remembering which environment variable configured it.
+
+## The suites
+
+`static-x check --list` prints them. The defaults:
+
+| Suite | Event | Reports | Blocks on |
+| --- | --- | --- | --- |
+| `commit` | pre-commit | lines this change added | `async/floating-promises`, `graph/cycles` |
+| `push` | pre-push | what isn't in the baseline | `graph/cycles` |
+| `claude` | `PostToolUse` | the file Claude just wrote | `async/floating-promises`, `types/loopholes` |
+
+Each also runs tools at `warn`, which report without rejecting — comment length, duplicate functions, LLM tells, stale references, dead exports.
+
+The block/warn split is measured rather than chosen. Of the eight analysis tools, only `async/floating-promises` and `graph/cycles` report nothing against this repository; those two find defects, so they block. Everything else finds things that are true, worth knowing, and a matter of degree. A gate that blocks on taste is one people learn to pass with `--no-verify`, and then it is worth nothing on the day it catches a dropped promise.
+
+To change a gate, edit the suite:
+
+```json
+{
+  "checks": {
+    "commit": {
+      "novelty": "changed-lines",
+      "tools": {
+        "ts/async/floating-promises": "block",
+        "ts/dupes/functions": { "level": "block", "minSeverity": "warning" },
+        "ts/comments/long": "warn",
+        "ts/comments/llm-tells": "off"
+      }
+    }
+  }
+}
+```
+
+A tool is `block`, `warn`, or `off`. The long form carries the same tuning keys as a [tool config](../README.md#configuration) — `ignore`, `minSeverity`, `minConfidence`, `input` — applied on top of whatever that tool already reads, so a gate can be stricter than the tool's everyday settings without changing them everywhere. A suite you write replaces the default of that name outright; suites you leave alone keep theirs. Naming a refactoring is an error: it rewrites code and cannot be scoped to a changed-file list, so it cannot gate an event.
+
+## Novelty: the reason this is installable
+
+Run the commit suite unfiltered against this repository and **79 of 141 source files carry a finding**. A hook that reported all of them would reject the majority of commits over code the author never wrote, and it would be uninstalled the same afternoon. `novelty` is what decides which findings a change is answerable for.
+
+| Value | Reports |
+| --- | --- |
+| `changed-lines` | Findings overlapping a line the change added. No state, correct on day one. |
+| `changed-file` | Every finding in a touched file, however old. |
+| `baseline` | Everything absent from `static-x-baseline.json`. |
+| `none` | Everything. |
+
+They are not interchangeable, and which one is right depends on where a tool anchors its finding. `comments/long`, `types/loopholes`, `async/floating-promises` and `dupes/functions` all anchor on the offending code, so `changed-lines` works: add a duplicate function and the finding lands in your hunk. `graph/cycles` anchors on one representative file of the cycle and `graph/dead-exports` reports in the file that *declares* the export — delete the last import of something in `a.ts` and the finding appears in `b.ts`. Neither has a line you touched, which is why the push suite uses a baseline instead.
 
 ```sh
-STATIC_X_TOOLS="ts/comments/long ts/types/loopholes ts/async/floating-promises" git commit
+static-x baseline          # records the push suite as it stands now
 ```
 
-Exit codes drive the gate: static-x exits `1` when it reports findings (the hook blocks) and `2` when it could not run at all — no `tsconfig.json`, unparseable config. The scripts deliberately treat `2` as a warning and let the commit through, so a project mid-refactor can never leave you unable to commit. Findings print as `file:line:column  severity  code  message`, which terminals and editors turn into clickable locations.
+Commit the file. Later runs report only what came after. It is meant to shrink: every entry is a finding someone decided not to fix yet, and re-running rewrites it from scratch, so an entry that no longer reproduces disappears rather than lingering as a permanent excuse.
 
-Both scripts read the working tree, not the index, so a partially staged file is judged by what is on disk. If that matters, wrap the checks in `git stash push --keep-index` / `git stash pop`.
+A policy the event cannot supply the inputs for degrades to the next broader one and says so. Silence there would be the dangerous option — a gate that quietly stopped filtering looks exactly like a gate that found something real.
 
-## Claude Code hooks
+## Exit codes
 
-Copy the script and register it:
+`check` follows the CLI's: **0** clean (advisory findings included), **1** blocked, **2** could not run. A git hook rejects on 1 and lets 2 through, so a project mid-refactor can never leave you unable to commit.
 
-```sh
-mkdir -p .claude/hooks
-cp hooks/claude/reject-long-comments.mjs .claude/hooks/
-```
+`--from claude` swaps in Claude Code's contract instead, which is why its hook no longer needs a wrapper script: **2** blocks the edit and feeds stderr back to the model, and everything else is 0. Every failure under that flag becomes 0 deliberately — static-x's own "could not run" is also 2, and a hook that wedges the session is worse than no hook.
 
-Then merge [`settings.example.json`](claude/settings.example.json) into `.claude/settings.json` (project-wide) or `.claude/settings.local.json` (just you). The matcher `Edit|Write` fires the hook after any file write; the script reads the event JSON on stdin, pulls `tool_input.file_path`, and ignores anything that isn't a TypeScript file.
+## Cost
 
-The exit codes there are Claude Code's, not static-x's: **exit 2 blocks and feeds stderr back to the model**, which is what turns a finding into a fix attempt. Everything else lets the edit stand. The script exits 0 when static-x is missing or fails, on the principle that a hook should never trap the session.
+One `check` runs the whole suite over one project session, so the language server starts and the program typechecks once rather than once per tool. Against this repository:
 
-Two things to weigh before turning this on:
+| | wall |
+| --- | --- |
+| five tools, five CLI processes | 5.9s |
+| five tools, one `check` | 0.93s |
+| — the first tool, paying project load | 440ms |
+| — each tool after | 48–322ms |
 
-- **Cost.** Each invocation loads the project and typechecks it — sub-second on a small project, several seconds on a large one, paid on every edit. If that bites, run the checks on `Stop` (once per turn) instead of `PostToolUse`, or use the [MCP server](../mcp/README.md), which keeps the session warm across calls and lets Claude scope a check to changed files itself.
-- **Blocking versus advising.** Comment length is a matter of taste, and a hook that blocks on taste turns into a fight the model always loses. Consider blocking only on the tools with real defects behind them — `ts/async/floating-promises` finds dropped promises, `ts/types/loopholes` finds discarded typechecking — and leaving the comment tools to `pre-commit`, where a human decides.
+A commit whose staged files contain no source at all costs nothing: dispatch answers a scope naming no source file before opening a session, so a docs-only commit never pays for a typecheck.
+
+Two things worth weighing before turning the Claude hook on. It runs on **every** edit, and while sub-second here it is not free on a large project — running the checks on `Stop` instead costs one pass per turn. And the [MCP server](../mcp/README.md) keeps a session warm across calls, which lets Claude scope a check itself rather than paying startup per hook invocation.
+
+## Doing it by hand
+
+The files here are exactly what the installer writes, asserted by [`hooks.test.ts`](hooks.test.ts) so the two cannot drift:
+
+| File | Event |
+| --- | --- |
+| [`git/pre-commit`](git/pre-commit) | git `pre-commit` |
+| [`git/pre-push`](git/pre-push) | git `pre-push` |
+| [`claude/settings.example.json`](claude/settings.example.json) | the `.claude/settings.json` block |
+
+Both git hooks read the working tree, not the index, so a partially staged file is judged by what is on disk while being *attributed* by what was staged. Wrap the checks in `git stash push --keep-index` / `git stash pop` if that matters; the installer does not, because a working-tree rewrite on every commit fails badly when interrupted.

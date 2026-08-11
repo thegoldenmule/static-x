@@ -47,7 +47,7 @@ const CLAUDE_MARKER = 'static-x check claude';
  * repository, and one that assumes PATH breaks under git GUIs, which
  * frequently run hooks with a login shell's PATH missing.
  */
-function hookScript(suite: string, from: string): string {
+export function hookScript(suite: string, from: string): string {
   return `#!/bin/sh
 # ${HOOK_MARKER}. The gate is configured in ${CONFIG_FILENAME},
 # not here — edit checks.${suite} there to change what this enforces.

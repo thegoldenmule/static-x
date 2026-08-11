@@ -6,9 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/reject-long-comments.mjs\"",
+            "command": "static-x check claude --from claude --project \"${CLAUDE_PROJECT_DIR}\"",
             "timeout": 60,
-            "statusMessage": "Checking comments with static-x..."
+            "statusMessage": "Checking with static-x..."
           }
         ]
       }

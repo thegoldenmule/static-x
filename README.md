@@ -6,7 +6,7 @@ Each language has its own directory containing the machinery to run its language
 
 - **[TypeScript tools](ts/README.md)** — the available tools and what they do
 - **[MCP server](mcp/README.md)** — expose the tools to Claude Code and other MCP clients
-- **[Example hooks](hooks/README.md)** — run the tools on changed files from git and Claude Code hooks
+- **[Hooks](hooks/README.md)** — `static-x install`: gate commits, pushes, and Claude's edits on the tools
 - **[Project plan](docs/plan.md)** — architecture, tool contracts, and milestones
 - **[Refactoring roadmap](ROADMAP.md)** — ReSharper's whole refactoring index, translated to TypeScript
 
@@ -62,6 +62,8 @@ static-x ts/types/loopholes --project . --input '{"includeTests": false}'
 
 Usage is `static-x <tool> --project <root> [--input '<json>'] [--files <path>]... [--files-from <file|->] [--format json|text]`. Running with no arguments lists the available tools. Output is JSON on stdout — findings for analysis tools, a `WorkspaceEdit` plus status for refactors — so results pipe cleanly into `jq` or an LLM. Exit codes: `0` clean, `1` findings reported, `2` usage or execution error.
 
+Three subcommands sit alongside the tools, named without a slash so they can never collide with one: `check <suite>` runs a named group of tools over a single project session, `baseline` records what a suite reports now, and `install` writes the hooks that call them — see [hooks](hooks/README.md).
+
 Each tool's README ([table here](ts/README.md)) documents its options, output shape, and what its findings mean. To use the tools from Claude Code conversationally, register the [MCP server](mcp/README.md).
 
 ## Check only what changed
@@ -78,7 +80,7 @@ A file list narrows what is *reported*, never what is *analyzed*. Symbol indexes
 
 The list is deliberately forgiving, so raw `git` output pipes in unfiltered: paths may be project-relative, working-directory-relative, or absolute; paths naming no source file are ignored; a list with no source files at all (a docs-only commit) is answered without loading the project. `--format text` prints one `file:line:column  severity  code  message` line per finding, for hooks and humans; `ts/refactors/rename` refuses `--files`, since a partial file list would mean a partial refactor.
 
-Ready-made [example hooks](hooks/README.md) wire this into git `pre-commit`/`pre-push` and Claude Code's `PostToolUse`.
+`static-x install` wires this into git `pre-commit`/`pre-push` and Claude Code's `PostToolUse` — with one difference that matters. A hook built on `--files` alone reports everything the touched files already had: 79 of this repository's 141 source files carry a finding, so such a hook rejects most commits over code their author never wrote. A [check suite](hooks/README.md) adds the missing half, reporting only what the change introduced.
 
 ## Configuration
 
@@ -112,3 +114,5 @@ Per tool node:
 | `minConfidence` | Drop findings whose `data.confidence` is below `low` < `medium` < `high` (findings without a confidence pass) |
 
 (`files` is not a config key — it names one run's changed files, so it belongs on the command line or in the MCP call, not in a file checked into the project.)
+
+A top-level `checks` block sits beside `ts`, naming which tools gate which event and how hard. That is deliberately the same file: selection in shell environment variables and tuning in a config file meant neither half told you what the gate actually did. See [hooks](hooks/README.md).

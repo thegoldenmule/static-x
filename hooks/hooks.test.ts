@@ -1,86 +1,90 @@
 import { spawnSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { hookScript } from '../cli/install.js';
 
 /**
- * The example hooks are documentation people copy verbatim, so they get
- * the same treatment as shipped code: syntax-checked, executable, and —
- * for the Claude Code hook, whose exit codes are the whole contract —
- * driven end to end against a fixture project.
+ * The shipped hooks are what `static-x install` writes, and people copy
+ * them by hand too, so they get the same treatment as shipped code:
+ * syntax-checked, executable, and — for the Claude Code settings, whose
+ * command string is the whole contract — driven end to end.
  */
 const HOOKS = path.resolve(import.meta.dirname);
 const REPO = path.resolve(HOOKS, '..');
-const FIXTURE = path.join(REPO, 'fixtures/basic-ts');
+const FIXTURE = path.join(REPO, 'fixtures/checks-ts');
 const CLI = path.join(REPO, 'cli/sx.mjs');
-const CLAUDE_HOOK = path.join(HOOKS, 'claude/reject-long-comments.mjs');
 
-const GIT_HOOKS = ['git/pre-commit', 'git/pre-push'];
-
-function isExecutable(file: string): boolean {
-  return (statSync(file).mode & 0o111) !== 0;
-}
-
-/** Runs the PostToolUse hook on one edited file, as Claude Code would. */
-function runClaudeHook(filePath: string, tools?: string): { status: number; stderr: string } {
-  const result = spawnSync('node', [CLAUDE_HOOK], {
-    input: JSON.stringify({
-      hook_event_name: 'PostToolUse',
-      tool_name: 'Edit',
-      cwd: FIXTURE,
-      tool_input: { file_path: filePath },
-    }),
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      STATIC_X_BIN: CLI,
-      CLAUDE_PROJECT_DIR: FIXTURE,
-      ...(tools === undefined ? {} : { STATIC_X_TOOLS: tools }),
-    },
-  });
-  return { status: result.status ?? -1, stderr: result.stderr };
-}
+const GIT_HOOKS = [
+  { file: 'git/pre-commit', suite: 'commit', from: 'git-staged' },
+  { file: 'git/pre-push', suite: 'push', from: 'project' },
+] as const;
 
 describe('example hooks', () => {
   it('ships shell hooks that parse and are executable', () => {
-    for (const hook of GIT_HOOKS) {
-      const file = path.join(HOOKS, hook);
-      expect(isExecutable(file), `${hook} is not executable`).toBe(true);
-      const check = spawnSync('sh', ['-n', file], { encoding: 'utf8' });
-      expect(check.status, `${hook}: ${check.stderr}`).toBe(0);
+    for (const { file } of GIT_HOOKS) {
+      const hook = path.join(HOOKS, file);
+      expect((statSync(hook).mode & 0o111) !== 0, `${file} is not executable`).toBe(true);
+      const check = spawnSync('sh', ['-n', hook], { encoding: 'utf8' });
+      expect(check.status, `${file}: ${check.stderr}`).toBe(0);
     }
   });
 
-  it('ships a Claude Code hook that parses and is executable', () => {
-    expect(isExecutable(CLAUDE_HOOK)).toBe(true);
-    const check = spawnSync('node', ['--check', CLAUDE_HOOK], { encoding: 'utf8' });
-    expect(check.status, check.stderr).toBe(0);
+  it('ships exactly what the installer writes', async () => {
+    // Documentation people copy cannot drift from the thing that
+    // generates it without one of the two being wrong.
+    for (const { file, suite, from } of GIT_HOOKS) {
+      expect(await readFile(path.join(HOOKS, file), 'utf8'), file).toBe(hookScript(suite, from));
+    }
   });
 
-  it('blocks with exit 2 and explains itself when the edited file has findings', () => {
-    const { status, stderr } = runClaudeHook(path.join(FIXTURE, 'src/math.ts'));
-    expect(status).toBe(2);
-    expect(stderr).toContain('src/math.ts');
-    expect(stderr).toContain('comment.long');
+  it('registers a Claude Code command that runs', async () => {
+    const settings = JSON.parse(
+      await readFile(path.join(HOOKS, 'claude/settings.example.json'), 'utf8'),
+    ) as { hooks: { PostToolUse: { matcher: string; hooks: { command: string }[] }[] } };
+    const entry = settings.hooks.PostToolUse[0];
+    expect(entry?.matcher).toBe('Edit|Write');
+    expect(entry?.hooks[0]?.command).toMatch(/check claude --from claude/);
   });
+});
 
-  it('stays silent on a clean file, a non-source file, and an unrelated event', () => {
-    expect(runClaudeHook(path.join(FIXTURE, 'src/greeter.ts'))).toEqual({ status: 0, stderr: '' });
-    expect(runClaudeHook(path.join(FIXTURE, 'README.md'))).toEqual({ status: 0, stderr: '' });
-
-    const noFile = spawnSync('node', [CLAUDE_HOOK], {
-      input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: {} }),
+/** Drives the CLI as a Claude Code PostToolUse hook would. */
+function runClaudeHook(filePath: string, suite = 'gate'): { status: number; stderr: string } {
+  const result = spawnSync(
+    'node',
+    [CLI, 'check', suite, '--from', 'claude', '--project', FIXTURE],
+    {
+      input: JSON.stringify({
+        hook_event_name: 'PostToolUse',
+        tool_name: 'Edit',
+        cwd: FIXTURE,
+        tool_input: { file_path: filePath },
+      }),
       encoding: 'utf8',
-      env: { ...process.env, STATIC_X_BIN: CLI },
-    });
-    expect(noFile.status).toBe(0);
+    },
+  );
+  return { status: result.status ?? -1, stderr: result.stderr };
+}
+
+describe('the Claude Code contract, end to end', () => {
+  it('blocks with exit 2 and explains itself', () => {
+    const { status, stderr } = runClaudeHook(path.join(FIXTURE, 'src/dropped.ts'));
+    expect(status).toBe(2);
+    expect(stderr).toContain('async.floating-promise');
+    expect(stderr).toContain('Fix these in the file you just wrote');
   });
 
-  it('never blocks the session when a tool cannot run', () => {
-    // No such tool: static-x exits 2, which the hook reports without
-    // blocking, so a misconfigured hook can't trap Claude.
-    const { status, stderr } = runClaudeHook(path.join(FIXTURE, 'src/math.ts'), 'ts/nope/nope');
+  it('stays silent on a clean file and a non-source file', () => {
+    expect(runClaudeHook(path.join(FIXTURE, 'src/clean.ts'))).toEqual({ status: 0, stderr: '' });
+    expect(runClaudeHook(path.join(FIXTURE, 'README.md'))).toEqual({ status: 0, stderr: '' });
+  });
+
+  it('never blocks the session when the check cannot run', () => {
+    // static-x's own "could not run" is exit 2, which is Claude's
+    // "block" — so a misconfigured hook has to come back as 0.
+    const { status, stderr } = runClaudeHook(path.join(FIXTURE, 'src/dropped.ts'), 'no-such-suite');
     expect(status).toBe(0);
-    expect(stderr).toContain('could not run');
+    expect(stderr).toContain('Unknown check suite');
   });
 });

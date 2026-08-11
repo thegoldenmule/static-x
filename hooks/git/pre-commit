@@ -1,64 +1,12 @@
 #!/bin/sh
-#
-# static-x pre-commit hook: run analysis tools over the staged files and
-# reject the commit if any of them reports findings.
-#
-# Install:
-#   cp hooks/git/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
-#   # husky: cp hooks/git/pre-commit .husky/pre-commit
-#
-# Configure with environment variables (or by editing the defaults):
-#   STATIC_X_TOOLS    space-separated tool names (default: ts/comments/long)
-#   STATIC_X_PROJECT  project root passed to --project (default: .)
-#   STATIC_X_BIN      the static-x executable (default: static-x on PATH)
-#
-# Per-project thresholds and ignores belong in static-x.json at the
-# project root, not here — the CLI and MCP server both honor it.
-#
-# Two things to know:
-#   - Tools read the working tree, not the index, so a partially staged
-#     file is judged by what is on disk. Add `git stash push --keep-index`
-#     around the checks if that matters to you.
-#   - Findings block (exit 1); a tool that fails to run (exit 2, e.g. no
-#     tsconfig.json yet) only warns, so a broken analyzer can never wedge
-#     your ability to commit.
-
-set -u
-
-tools="${STATIC_X_TOOLS:-ts/comments/long}"
-project="${STATIC_X_PROJECT:-.}"
-bin="${STATIC_X_BIN:-static-x}"
-
-if ! command -v "$bin" >/dev/null 2>&1; then
-  echo "pre-commit: $bin is not on PATH — skipping static-x checks" >&2
+# Installed by `static-x install`. The gate is configured in static-x.json,
+# not here — edit checks.commit there to change what this enforces.
+if command -v static-x >/dev/null 2>&1; then
+  bin=static-x
+elif [ -x node_modules/.bin/static-x ]; then
+  bin=node_modules/.bin/static-x
+else
+  echo "static-x not found — skipping checks" >&2
   exit 0
 fi
-
-failed=0
-for tool in $tools; do
-  # --diff-filter=ACMR drops deletions; -z survives odd filenames. The
-  # whole staged list is piped in as-is: static-x ignores paths that name
-  # no source file, and answers instantly when none of them do.
-  output=$(git diff --cached --name-only --diff-filter=ACMR -z |
-    "$bin" "$tool" --project "$project" --files-from - --format text 2>&1)
-  status=$?
-
-  case "$status" in
-    0) ;;
-    1)
-      printf '%s\n\n' "$output" >&2
-      failed=1
-      ;;
-    *)
-      printf 'pre-commit: %s could not run (exit %s):\n%s\n\n' "$tool" "$status" "$output" >&2
-      ;;
-  esac
-done
-
-if [ "$failed" -ne 0 ]; then
-  echo 'Commit blocked by static-x. Fix the findings above, tune the tool in' >&2
-  echo 'static-x.json, or bypass this once with `git commit --no-verify`.' >&2
-  exit 1
-fi
-
-exit 0
+exec "$bin" check commit --from git-staged
