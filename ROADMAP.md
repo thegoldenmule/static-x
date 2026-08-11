@@ -267,5 +267,13 @@ plainly: extracting a `'use client'` directive, or the specifier of `import('./m
 both produced clean compiles and wrong code. Neither is an index entry. Both were worth
 more than any row left on the list.
 
-So the next roadmap should not be a translation. It should start from the corpora and ask
-what compiles clean and is wrong.
+So the next roadmap is not a translation. It starts from the corpora and asks what compiles
+clean and is wrong: [docs/next-roadmap.md](docs/next-roadmap.md).
+
+Its first result is worth stating here, because it is a warning about this kind of document.
+Ten candidate defect classes were measured against the same four projects — 7,578 raw
+findings, 41 motivated defects, and **zero new tools**. Four were already reported by `tsc`,
+three duplicated a tool that ships, and the rest died on precision. What the round produced
+instead were defects in tools that already ship, which is the same shape as the `extract`
+finding above: the code that is running is a better place to look than the list of code that
+is not.
