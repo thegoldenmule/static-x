@@ -17,13 +17,25 @@
     "whole": {
       "novelty": "none",
       "tools": {
-        "ts/comments/long": { "level": "block", "input": { "maxLines": 3 } }
+        "ts/comments/long": {
+          "level": "block",
+          "input": {
+            "maxLines": 3
+          }
+        }
       }
     },
     "recorded": {
       "novelty": "baseline",
       "tools": {
         "ts/comments/long": "block"
+      }
+    },
+    "promotable": {
+      "novelty": "none",
+      "tools": {
+        "ts/graph/cycles": "warn",
+        "ts/comments/long": "warn"
       }
     }
   }

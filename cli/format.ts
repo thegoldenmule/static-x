@@ -31,7 +31,7 @@ export function findingLine(finding: Finding, cwd: string): string {
   return `${location(finding, cwd)}  ${finding.severity}  ${finding.code}  ${finding.message}`;
 }
 
-export function summary(findings: readonly Finding[]): string {
+function summary(findings: readonly Finding[]): string {
   const counts = new Map<Severity, number>();
   for (const finding of findings) counts.set(finding.severity, (counts.get(finding.severity) ?? 0) + 1);
   const parts = (['error', 'warning', 'info'] as const)
@@ -56,3 +56,4 @@ export function formatResult(result: unknown, format: OutputFormat, cwd: string)
   if (result.length === 0) return [];
   return [...result.map((finding) => findingLine(finding, cwd)), '', summary(result)];
 }
+

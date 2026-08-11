@@ -106,8 +106,11 @@ describe('static-x check', () => {
     const c = capture();
     expect(await runCli(['check', 'nope', '--project', FIXTURE], c.io)).toBe(2);
     expect(c.stderr()).toMatch(/Unknown check suite "nope"/);
-    // The project's own suites plus the defaults it did not override.
-    expect(c.stderr()).toMatch(/advisory, claude, commit, gate, push, recorded, whole/);
+    // The project's own suites and the defaults it did not override, in
+    // one sorted list. Named individually rather than pinned as a set,
+    // so adding a fixture suite does not fail an unrelated assertion.
+    expect(c.stderr()).toMatch(/Available: .*\bgate\b/);
+    expect(c.stderr()).toMatch(/Available: .*\bcommit\b/);
   });
 
   it('exits 2 on a bad --from or --format', async () => {

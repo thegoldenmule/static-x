@@ -199,6 +199,20 @@ function parseEntry(raw: unknown, where: string): CheckEntry {
   return Object.keys(config).length > 0 ? { level: level as CheckLevel, config } : { level: level as CheckLevel };
 }
 
+/**
+ * A suite back in its config spelling — the inverse of resolveSuite. It
+ * lives here so the parser and the writer stay in one file: anything
+ * `install` or `ratchet` writes has to be something this module will
+ * read back.
+ */
+export function serializeSuite(suite: CheckSuite): Record<string, unknown> {
+  const tools: Record<string, unknown> = {};
+  for (const [name, entry] of Object.entries(suite.tools)) {
+    tools[name] = entry.config ? { level: entry.level, ...entry.config } : entry.level;
+  }
+  return { novelty: suite.novelty, tools };
+}
+
 /** The tools a suite actually runs, in registry order. */
 export function activeTools(suite: CheckSuite): { name: string; entry: CheckEntry }[] {
   return Object.entries(suite.tools)

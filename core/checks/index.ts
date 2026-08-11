@@ -2,6 +2,7 @@ export {
   activeTools,
   checksBlock,
   resolveSuite,
+  serializeSuite,
   suiteNames,
   type CheckEntry,
   type CheckLevel,
@@ -33,3 +34,10 @@ export {
   type Dispatcher,
   type ToolOutcome,
 } from './run.js';
+export {
+  isEmptyPlan,
+  planRatchet,
+  type BaselineDelta,
+  type Promotion,
+  type RatchetPlan,
+} from './ratchet.js';

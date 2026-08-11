@@ -291,6 +291,7 @@ export async function runBaselineCommand(argv: string[], io: CliIo): Promise<num
     positionals = parsed.positionals;
   } catch (error) {
     io.err(String(error instanceof Error ? error.message : error));
+    for (const line of BASELINE_USAGE) io.err(line);
     return 2;
   }
 

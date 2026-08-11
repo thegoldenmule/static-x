@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { CONFIG_FILENAME } from '../core/config/index.js';
-import type { CheckSuite } from '../core/checks/index.js';
+import { serializeSuite } from '../core/checks/index.js';
 import { TS_DEFAULT_CHECKS } from '../ts/checks.js';
 import type { CliIo } from './io.js';
 
@@ -192,15 +192,6 @@ async function configChanges(root: string): Promise<Change[]> {
   ];
 }
 
-/** Back to the config spelling: a bare level unless there is tuning. */
-function serializeSuite(suite: CheckSuite): Record<string, unknown> {
-  const tools: Record<string, unknown> = {};
-  for (const [name, entry] of Object.entries(suite.tools)) {
-    tools[name] = entry.config ? { level: entry.level, ...entry.config } : entry.level;
-  }
-  return { novelty: suite.novelty, tools };
-}
-
 export async function runInstall(argv: string[], io: CliIo): Promise<number> {
   let values: { project?: string; target?: string[]; force?: boolean; 'dry-run'?: boolean };
   try {
@@ -215,6 +206,7 @@ export async function runInstall(argv: string[], io: CliIo): Promise<number> {
     }).values;
   } catch (error) {
     io.err(String(error instanceof Error ? error.message : error));
+    for (const line of INSTALL_USAGE) io.err(line);
     return 2;
   }
 
@@ -222,6 +214,7 @@ export async function runInstall(argv: string[], io: CliIo): Promise<number> {
   for (const target of targets) {
     if (target !== 'git' && target !== 'claude' && target !== 'config') {
       io.err(`--target must be one of git, claude, config (got ${target})`);
+      for (const line of INSTALL_USAGE) io.err(line);
       return 2;
     }
   }
