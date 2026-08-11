@@ -12,6 +12,7 @@ import { extractType } from './refactors/extract-type/extract-type.js';
 import { inlineFunction } from './refactors/inline-function/inline-function.js';
 import { inlineParameter } from './refactors/inline-parameter/inline-parameter.js';
 import { makeReadonly } from './refactors/make-readonly/make-readonly.js';
+import { moduleForm } from './refactors/module-form/module-form.js';
 import { moveFile } from './refactors/move-file/move-file.js';
 import { moveSymbol } from './refactors/move-symbol/move-symbol.js';
 import { rename } from './refactors/rename/rename.js';
@@ -37,6 +38,7 @@ export function createTsRegistry(): ToolRegistry {
   registry.register(inlineFunction);
   registry.register(inlineParameter);
   registry.register(makeReadonly);
+  registry.register(moduleForm);
   registry.register(moveFile);
   registry.register(moveSymbol);
   registry.register(rename);

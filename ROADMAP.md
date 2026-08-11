@@ -136,7 +136,7 @@ Both halves are now closed. `applicableActions` passes `'invoked'`, so the paths
 | ◻ | Convert Indexer to Method | `ts/refactors/index-access-form` | TS has no indexer *member* — only an index *signature*, which has no body, while `obj[k]` is ordinary dynamic property syntax. The transferable refactor replaces the signature with `get`/`set` methods and rewrites accesses. | symbol |
 | ◻ | Convert Method to Indexer | `ts/refactors/index-access-form` | The reverse: a trivial `get`/`set` pair collapses into an index signature. | symbol |
 | ◻ | Convert to Non-Global Using | `ts/refactors/globals-to-imports` | Replaces reliance on an ambient global with the explicit import each referencing file needs, deleting the `declare global` or converting a `namespace` into a module. | symbol |
-| ◻ | Introduce Namespace Alias | `ts/refactors/namespace-import` | C#'s `using X = Some.Long.Namespace` aliases a node in a global namespace tree. TypeScript has no such tree — the only thing to alias is a module specifier, and `import * as ns` is a real runtime binding, not a compile-time shorthand. | file |
+| ✅ | Introduce Namespace Alias | `ts/refactors/module-form` | C#'s `using X = Some.Long.Namespace` aliases a node in a global namespace tree. TypeScript has no such tree — the only thing to alias is a module specifier, and `import * as ns` is a real runtime binding, not a compile-time shorthand. | file |
 | ◻ | Convert Extension Method to Plain Static | `ts/refactors/unpatch-prototype` | The nearest TS construct is a prototype patch plus a declaration-merged interface. This converts it back to a plain function, rewriting `xs.last()` into `last(xs)` and deleting both halves of the patch. | symbol |
 
 ### No TypeScript meaning
@@ -174,7 +174,7 @@ The five above are small tools over one substantial foundation, built and tested
 
 ## The next five
 
-Ordered after probing what TypeScript's engine actually does for each candidate, which moved two of them and inverted one. Four are shipped; one remains.
+Ordered after probing what TypeScript's engine actually does for each candidate, which moved two of them and inverted one. All five have shipped; what follows is the record of why they were sequenced this way, and [round three](#deliberately-left-for-later) is next.
 
 **The cost model, measured.** TypeScript 5.9.3 registers 15 refactors and 24 action kinds. Only 8 entries in the index above get any engine help at all; `change-signature`, the entire member-move family, and every inline are wholly our own code. That negative space, not the ReSharper naming, is what the ordering should follow.
 
@@ -184,7 +184,7 @@ Ordered after probing what TypeScript's engine actually does for each candidate,
 | ✅ | `ts/refactors/change-signature` (options-object form) | Transform Parameters, and the beachhead of Change Signature | `Convert parameters to destructured object` |
 | ✅ | `ts/refactors/extract-type` | Introduce type alias, Convert Anonymous to Named Type, Introduce typedef | `Extract type` |
 | ✅ | `ts/refactors/inline-function` | Inline Method — and makes Inline Variable, Inline Field and Inline type alias shippable rather than hazardous | none usable |
-| 1 | `ts/refactors/module-form` | Introduce Namespace Alias, partly | `Convert export`, `Convert import` |
+| ✅ | `ts/refactors/module-form` | Introduce Namespace Alias, partly | `Convert export`, `Convert import` |
 
 **✅ `extract` went first because it builds the addressing.** `Extract Symbol` offers "extract to inner function", "to method in class", "to constant", and "to readonly field" as scopes on the same range, so one tool retires three index entries; it propagates `async` and captured generics correctly, and returns a `renameLocation` so a caller-supplied name is a deterministic post-edit. The tool enumerates the offered scopes rather than guessing an index — an unoffered index throws a raw `TypeError` instead of refusing. Addressing is `{file, select, within?}`, where `select` is the exact source text, located by enumerating parsed candidate ranges and keying them with `tokenKey`. `within` is **optional**: 429 anonymous function bodies in this repo sit inside no named function, so requiring it would make them unreachable. The locator must not be built on `ts.createScanner` over raw text — without parser context it mis-tokenizes template literals and regex-versus-division.
 
@@ -194,7 +194,7 @@ Ordered after probing what TypeScript's engine actually does for each candidate,
 
 **✅ `inline-function`, carrying the rest of the inline family.** This is the correction to the previous plan, which called `inline-variable` cheap delegation. It is not. TypeScript's inline-variable parenthesizes on precedence rank with no operand-position test (`const d = a - b; return c - d` becomes `return c - a - b`), performs no scope-capture check at all, and performs no purity check (`const v = bump()` used three times becomes three calls). The guard reports **zero new diagnostics** for the first two. Shipping it as delegation would put three wrong-answer classes into a guard-blind hole, which is the disqualifier this document opens with. What makes the family shippable is a `substitution.ts` that parenthesizes on operand position, resolves every root identifier at each substitution site, and refuses an impure expression used more than once. Expect this tool to refuse often; that is the point, because the alternative is not the model waiting but the model inlining by hand and `tsc` saying nothing.
 
-**1. `module-form` is the cheapest remaining tool whose whole difficulty is finding files the caller never opened.** Default-to-named rewrites every importer's specifier; namespace-to-named rewrites the import clause and every qualified use. The guard is complete here — a missed importer is `TS2613` or `TS1192`. It also regression-tests a rule worth having: the engine's import conversion re-derives its own target and ignores the action name it was asked for, so a wrapper must verify the requested action is the one applicability listed.
+**✅ `module-form` was the cheapest remaining tool whose whole difficulty is finding files the caller never opened.** Default-to-named rewrites every importer's specifier; namespace-to-named rewrites the import clause and every qualified use. The guard is complete here — a missed importer is `TS2613` or `TS1192`. It also regression-tests a rule worth having: the engine's import conversion re-derives its own target and ignores the action name it was asked for, so a wrapper must verify the requested action is the one applicability listed.
 
 ### New machinery these need
 

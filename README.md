@@ -46,6 +46,8 @@ static-x ts/refactors/inline-function --project . --input '{"symbol": "differenc
 static-x ts/refactors/inline-parameter --project . \
   --input '{"symbol": "log", "parameter": "level"}'
 static-x ts/refactors/make-readonly --project . --input '{"symbol": "limit"}'
+static-x ts/refactors/module-form --project . \
+  --input '{"file": "src/greet.ts", "symbol": "greet", "to": "named-export"}'
 static-x ts/refactors/move-file --project . \
   --input '{"file": "src/lib.ts", "toDirectory": "src/core"}'
 static-x ts/refactors/move-symbol --project . \
