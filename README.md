@@ -12,16 +12,64 @@ Each language has its own directory containing the machinery to run its language
 
 ## Install
 
-Requires Node 20+. No build step — the CLI runs the TypeScript sources directly.
+Requires Node 20+. There is no build step — the CLI runs the TypeScript sources directly, so there is nothing to compile after installing.
+
+**In a project** (recommended — the version is pinned in your lockfile, and the git hooks find the binary in `node_modules/.bin` without needing anything on `PATH`):
+
+```sh
+cd ~/code/my-app
+npm install --save-dev github:thegoldenmule/static-x
+npx static-x --help
+```
+
+**Globally**, to run it against any project without adding a dependency:
+
+```sh
+npm install -g github:thegoldenmule/static-x
+static-x --help
+```
+
+**From a clone**, to work on static-x itself:
 
 ```sh
 git clone https://github.com/thegoldenmule/static-x.git
-cd static-x
-npm install
-npm link        # puts `static-x` and `static-x-mcp` on your PATH
+cd static-x && npm install
+npm link                       # puts `static-x` and `static-x-mcp` on your PATH
+npm run sx -- --help           # or run it in place, without linking
 ```
 
-(Without `npm link`, substitute `node /path/to/static-x/cli/sx.mjs` for `static-x` below.)
+Either of the first two puts two binaries in place: `static-x` (the CLI) and `static-x-mcp` (the [MCP server](mcp/README.md)). Project-local installs reach them through `npx static-x`, or directly as `./node_modules/.bin/static-x`.
+
+## Turn on the checks
+
+Three commands take a project from nothing to a gate that rejects a bad commit. Run them in order, from the project root:
+
+```sh
+npx static-x install         # 1. write the hooks and the default suites
+npx static-x baseline        # 2. record what's already there, so it doesn't block you
+npx static-x check commit    # 3. see what a commit would be judged on
+```
+
+What each one does:
+
+1. **`install`** writes a `pre-commit` and `pre-push` hook (into `.husky/` if you use husky, `.git/hooks/` otherwise), registers the Claude Code `PostToolUse` hook in `.claude/settings.json`, and copies the default check suites into `static-x.json` so you can read and edit them. It never overwrites a hook it didn't write. Add `--dry-run` to see the file list first.
+
+2. **`baseline`** records every finding the push suite reports right now into `static-x-baseline.json`. **Do this before your first push**, or the push hook reports your whole backlog at once. Commit the file — later runs report only what came after it. It tells you if it just accepted anything that would otherwise block.
+
+3. **`check commit`** runs what the pre-commit hook runs. Nothing staged means nothing to report, so stage something first if you want to see it work.
+
+Then commit as normal. A dropped promise in the lines you just wrote stops the commit:
+
+```
+Blocking (1):
+  src/bad.ts:2:31  warning  async.floating-promise  This statement creates a Promise and drops it: ...
+
+commit: reporting changed-lines
+```
+
+The same defect in a file you didn't touch stays silent — the commit suite reports on changed lines, which is what makes it installable on a codebase that has never had a gate. `--no-verify` bypasses it once. `static-x check --list` shows every suite and what it enforces; [hooks](hooks/README.md) explains how to change them, and how `static-x ratchet` tightens them as you fix things.
+
+To take it all back out: delete `.husky/pre-commit` and `.husky/pre-push` (or the same files under `.git/hooks/`), the `hooks.PostToolUse` entry in `.claude/settings.json`, and `static-x.json` / `static-x-baseline.json`.
 
 ## Use on a project
 

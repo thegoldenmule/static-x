@@ -20,6 +20,7 @@ import type { Finding } from '../core/tool/index.js';
 import { TsFerry } from '../ts/ferry/ferry.js';
 import { TS_DEFAULT_CHECKS } from '../ts/checks.js';
 import { createTsRegistry } from '../ts/registry.js';
+import { isHelpFlag } from './usage.js';
 import type { CliIo } from './io.js';
 
 /**
@@ -122,6 +123,10 @@ async function writeConfig(
 }
 
 export async function runRatchet(argv: string[], io: CliIo): Promise<number> {
+  if (argv.some(isHelpFlag)) {
+    for (const line of RATCHET_USAGE) io.out(line);
+    return 0;
+  }
   let values: { project?: string; apply?: boolean };
   let positionals: string[];
   try {

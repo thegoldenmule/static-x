@@ -5,6 +5,7 @@ import { parseArgs } from 'node:util';
 import { CONFIG_FILENAME } from '../core/config/index.js';
 import { serializeSuite } from '../core/checks/index.js';
 import { TS_DEFAULT_CHECKS } from '../ts/checks.js';
+import { isHelpFlag } from './usage.js';
 import type { CliIo } from './io.js';
 
 /**
@@ -193,6 +194,10 @@ async function configChanges(root: string): Promise<Change[]> {
 }
 
 export async function runInstall(argv: string[], io: CliIo): Promise<number> {
+  if (argv.some(isHelpFlag)) {
+    for (const line of INSTALL_USAGE) io.out(line);
+    return 0;
+  }
   let values: { project?: string; target?: string[]; force?: boolean; 'dry-run'?: boolean };
   try {
     values = parseArgs({

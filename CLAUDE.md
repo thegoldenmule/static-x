@@ -10,7 +10,7 @@ start from the working tree.
 ```sh
 npm run typecheck                  # tsc, noEmit
 npm run lint                       # eslint, type-checked rules
-npx vitest run                     # 835 tests, ~42s wall (parallel; ~9 min of real compilation)
+npx vitest run                     # 838 tests, ~45s wall (parallel; ~9 min of real compilation)
 npx vitest run ts/refactors/rename # one file, or any path substring
 npx vitest run -t 'repoints every importer'   # one test by name
 npm run test:watch

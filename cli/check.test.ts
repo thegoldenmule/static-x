@@ -210,6 +210,40 @@ describe('static-x baseline', () => {
   });
 });
 
+describe('help', () => {
+  it('prints usage to stdout and exits 0 when asked', async () => {
+    for (const argv of [['--help'], ['-h'], ['help']]) {
+      const c = capture();
+      expect(await runCli(argv, c.io), argv.join(' ')).toBe(0);
+      expect(c.stdout()).toMatch(/^Usage: static-x <tool>/);
+      expect(c.stdout()).toMatch(/Tools: .*ts\/comments\/long/);
+      expect(c.stderr()).toBe('');
+    }
+  });
+
+  it('still treats a forgotten argument as an error, on stderr', async () => {
+    // The same text, the other way round: exit 0 here would make a
+    // missing --project look like success to whatever checks the code.
+    const c = capture();
+    expect(await runCli([], c.io)).toBe(2);
+    expect(c.stderr()).toMatch(/^Usage: static-x <tool>/);
+    expect(c.stdout()).toBe('');
+  });
+
+  it('gives each command its own usage', async () => {
+    for (const [command, pattern] of [
+      ['check', /Usage: static-x check <suite>/],
+      ['baseline', /Usage: static-x baseline/],
+      ['ratchet', /Usage: static-x ratchet/],
+      ['install', /Usage: static-x install/],
+    ] as const) {
+      const c = capture();
+      expect(await runCli([command, '--help'], c.io), command).toBe(0);
+      expect(c.stdout(), command).toMatch(pattern);
+    }
+  });
+});
+
 describe('command routing', () => {
   it('rejects an unknown bare word, pointing at the path-like tool form', async () => {
     const c = capture();

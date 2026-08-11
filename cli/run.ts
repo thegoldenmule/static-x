@@ -3,6 +3,7 @@ import { parseArgs } from 'node:util';
 import { TsFerry } from '../ts/ferry/ferry.js';
 import { createTsRegistry } from '../ts/registry.js';
 import { formatResult, isOutputFormat } from './format.js';
+import { isHelpFlag } from './usage.js';
 
 import type { CliIo } from './io.js';
 
@@ -34,6 +35,7 @@ const COMMANDS: Record<string, (argv: string[], io: CliIo) => Promise<number>> =
   baseline: async (argv, io) => (await import('./check.js')).runBaselineCommand(argv, io),
   ratchet: async (argv, io) => (await import('./ratchet.js')).runRatchet(argv, io),
   install: async (argv, io) => (await import('./install.js')).runInstall(argv, io),
+  help: (argv, io) => runCli(argv.length > 0 ? [...argv, '--help'] : ['--help'], io),
 };
 
 /** Splits a newline- or NUL-separated path list, as hooks produce it. */
@@ -59,10 +61,23 @@ async function readStdin(): Promise<string> {
  * error — so a hook can block on 1 and report on 2.
  */
 export async function runCli(argv: string[], io: CliIo): Promise<number> {
+  const [first, ...rest] = argv;
+
+  // Asked-for help goes to stdout and exits 0; the same text on a usage
+  // error goes to stderr and exits 2. Conflating them makes `static-x
+  // --help | less` come back empty — and makes a forgotten argument look
+  // like success to whatever is checking the exit code.
+  if (first !== undefined && isHelpFlag(first)) {
+    const registry = createTsRegistry();
+    for (const line of USAGE) io.out(line);
+    io.out('');
+    io.out(`Tools: ${registry.names().join(', ')}`);
+    return 0;
+  }
+
   // Tool names are always path-like ("ts/comments/long"), so a bare
   // first word can only be a command — no ambiguity to resolve, and no
   // reserved word that a future tool could collide with.
-  const [first, ...rest] = argv;
   if (first !== undefined && !first.startsWith('-') && !first.includes('/')) {
     const command = COMMANDS[first];
     if (!command) {
