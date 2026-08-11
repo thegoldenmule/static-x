@@ -7,6 +7,7 @@ import { dupeFunctions } from './dupes/functions/functions.js';
 import { importCycles } from './graph/cycles/cycles.js';
 import { deadExports } from './graph/dead-exports/dead-exports.js';
 import { changeSignature } from './refactors/change-signature/change-signature.js';
+import { constructorToFactory } from './refactors/constructor-to-factory/constructor-to-factory.js';
 import { enumToConstObject } from './refactors/enum-to-const-object/enum-to-const-object.js';
 import { extract } from './refactors/extract/extract.js';
 import { extractClass } from './refactors/extract-class/extract-class.js';
@@ -49,6 +50,7 @@ export function createTsRegistry(): ToolRegistry {
   registry.register(importCycles);
   registry.register(deadExports);
   registry.register(changeSignature);
+  registry.register(constructorToFactory);
   registry.register(enumToConstObject);
   registry.register(extract);
   registry.register(extractClass);

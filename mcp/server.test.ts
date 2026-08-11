@@ -33,6 +33,7 @@ describe('MCP adapter', () => {
       'ts_graph_cycles',
       'ts_graph_dead-exports',
       'ts_refactors_change-signature',
+      'ts_refactors_constructor-to-factory',
       'ts_refactors_enum-to-const-object',
       'ts_refactors_extract',
       'ts_refactors_extract-class',
