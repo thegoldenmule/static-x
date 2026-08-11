@@ -39,6 +39,7 @@ describe('MCP adapter', () => {
       'ts_refactors_extract-interface',
       'ts_refactors_extract-superclass',
       'ts_refactors_extract-type',
+      'ts_refactors_inline-field',
       'ts_refactors_inline-function',
       'ts_refactors_inline-parameter',
       'ts_refactors_inline-type-alias',

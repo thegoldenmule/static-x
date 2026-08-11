@@ -13,6 +13,7 @@ import { extractClass } from './refactors/extract-class/extract-class.js';
 import { extractInterface } from './refactors/extract-interface/extract-interface.js';
 import { extractSuperclass } from './refactors/extract-superclass/extract-superclass.js';
 import { extractType } from './refactors/extract-type/extract-type.js';
+import { inlineField } from './refactors/inline-field/inline-field.js';
 import { inlineFunction } from './refactors/inline-function/inline-function.js';
 import { inlineTypeAlias } from './refactors/inline-type-alias/inline-type-alias.js';
 import { inlineParameter } from './refactors/inline-parameter/inline-parameter.js';
@@ -54,6 +55,7 @@ export function createTsRegistry(): ToolRegistry {
   registry.register(extractInterface);
   registry.register(extractSuperclass);
   registry.register(extractType);
+  registry.register(inlineField);
   registry.register(inlineFunction);
   registry.register(inlineTypeAlias);
   registry.register(inlineParameter);
