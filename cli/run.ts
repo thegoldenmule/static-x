@@ -21,7 +21,22 @@ const USAGE = [
   '  --files-from  Read that list from a file, or from stdin with `-`; one path per line',
   '                (NUL-separated works too, so `git diff --name-only -z` pipes straight in).',
   '  --format      json (default) or text, one `file:line:col` line per finding.',
+  '',
+  'Commands: check <suite>   run a suite of tools over one session (what a hook runs)',
+  '          baseline        record what a suite reports now, to gate on what comes after',
+  '          install         write the git and Claude Code hooks, and the default suites',
 ];
+
+/**
+ * Subcommands, resolved lazily. `check` and `install` pull in the whole
+ * suite machinery and the TypeScript defaults, which a plain tool run
+ * has no use for.
+ */
+const COMMANDS: Record<string, (argv: string[], io: CliIo) => Promise<number>> = {
+  check: async (argv, io) => (await import('./check.js')).runCheck(argv, io),
+  baseline: async (argv, io) => (await import('./check.js')).runBaselineCommand(argv, io),
+  install: async (argv, io) => (await import('./install.js')).runInstall(argv, io),
+};
 
 /** Splits a newline- or NUL-separated path list, as hooks produce it. */
 function parseFileList(text: string): string[] {
@@ -46,6 +61,20 @@ async function readStdin(): Promise<string> {
  * error — so a hook can block on 1 and report on 2.
  */
 export async function runCli(argv: string[], io: CliIo): Promise<number> {
+  // Tool names are always path-like ("ts/comments/long"), so a bare
+  // first word can only be a command — no ambiguity to resolve, and no
+  // reserved word that a future tool could collide with.
+  const [first, ...rest] = argv;
+  if (first !== undefined && !first.startsWith('-') && !first.includes('/')) {
+    const command = COMMANDS[first];
+    if (!command) {
+      io.err(`Unknown command "${first}". Commands: ${Object.keys(COMMANDS).join(', ')}`);
+      io.err('A tool is named path-like, e.g. `static-x ts/comments/long --project .`');
+      return 2;
+    }
+    return command(rest, io);
+  }
+
   let parsed: {
     positionals: string[];
     values: {

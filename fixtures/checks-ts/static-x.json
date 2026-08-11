@@ -1,0 +1,30 @@
+{
+  "checks": {
+    "gate": {
+      "novelty": "changed-file",
+      "tools": {
+        "ts/async/floating-promises": "block",
+        "ts/comments/long": "warn"
+      }
+    },
+    "advisory": {
+      "novelty": "none",
+      "tools": {
+        "ts/comments/long": "warn",
+        "ts/async/floating-promises": "off"
+      }
+    },
+    "whole": {
+      "novelty": "none",
+      "tools": {
+        "ts/comments/long": { "level": "block", "input": { "maxLines": 3 } }
+      }
+    },
+    "recorded": {
+      "novelty": "baseline",
+      "tools": {
+        "ts/comments/long": "block"
+      }
+    }
+  }
+}

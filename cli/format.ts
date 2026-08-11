@@ -26,7 +26,12 @@ function location(finding: Finding, cwd: string): string {
   return `${shown}:${String(finding.range.start.line + 1)}:${String(finding.range.start.character + 1)}`;
 }
 
-function summary(findings: readonly Finding[]): string {
+/** One finding as the linkable line hooks print and editors resolve. */
+export function findingLine(finding: Finding, cwd: string): string {
+  return `${location(finding, cwd)}  ${finding.severity}  ${finding.code}  ${finding.message}`;
+}
+
+export function summary(findings: readonly Finding[]): string {
   const counts = new Map<Severity, number>();
   for (const finding of findings) counts.set(finding.severity, (counts.get(finding.severity) ?? 0) + 1);
   const parts = (['error', 'warning', 'info'] as const)
@@ -49,12 +54,5 @@ export function formatResult(result: unknown, format: OutputFormat, cwd: string)
     return [JSON.stringify(result, null, 2)];
   }
   if (result.length === 0) return [];
-  return [
-    ...result.map(
-      (finding) =>
-        `${location(finding, cwd)}  ${finding.severity}  ${finding.code}  ${finding.message}`,
-    ),
-    '',
-    summary(result),
-  ];
+  return [...result.map((finding) => findingLine(finding, cwd)), '', summary(result)];
 }
