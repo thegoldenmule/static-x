@@ -6,9 +6,8 @@ import { memberHierarchy } from '../../ast/hierarchy.js';
 import {
   declarationAt,
   findDeclarations,
-  resolveTarget,
+  resolveMemberTarget,
   SYMBOL_TARGET_PROPERTIES,
-  type ResolvedTarget,
 } from '../../ast/targets.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { diagnosticsIntroducedBy } from '../guard.js';
@@ -207,33 +206,6 @@ interface Destination {
 function containerOf(declaration: ts.Node): ts.ClassLikeDeclaration | undefined {
   const parent = declaration.parent as ts.Node | undefined;
   return parent && ts.isClassLike(parent) ? parent : undefined;
-}
-
-/**
- * Resolve the member to move. `class` narrows before `resolveTarget`
- * would refuse: a static named `shipping` on two different classes is
- * two symbols, and picking either without being told is how a tool
- * refactors the wrong one.
- */
-function resolveMember(session: TsProjectSession, input: MoveMemberInput): ResolvedTarget {
-  if (input.symbol === undefined || input.class === undefined) return resolveTarget(session, input);
-  const candidates = findDeclarations(session, input.symbol, input.file).filter((candidate) => {
-    const container = candidate.declaration && containerOf(candidate.declaration);
-    return container?.name?.text === input.class;
-  });
-  if (candidates.length === 0) {
-    throw new Error(`No member named "${input.symbol}" is declared on class "${input.class}"`);
-  }
-  if (new Set(candidates.map((candidate) => candidate.file)).size > 1) {
-    const locations = candidates
-      .map((candidate) => `${candidate.file}:${candidate.position.line + 1}`)
-      .join('\n  ');
-    throw new Error(
-      `"${input.class}.${input.symbol}" is declared in multiple files; disambiguate with ` +
-        `file/line/character:\n  ${locations}`,
-    );
-  }
-  return candidates[0]!;
 }
 
 /** The class named by `toClass`, or a refusal naming what was found. */
@@ -693,7 +665,7 @@ export const moveMember: Tool<MoveMemberInput, MoveMemberOutput, TsProjectSessio
       throw new Error('Give exactly one destination: toClass or toFile');
     }
 
-    const target = resolveMember(session, input);
+    const target = resolveMemberTarget(session, input);
     const declaration = declarationAt(target);
     const container = containerOf(declaration);
     const checker = session.checker();

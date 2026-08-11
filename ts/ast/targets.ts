@@ -140,3 +140,36 @@ export function declarationAt(target: ResolvedTarget): ts.NamedDeclaration {
   }
   return found;
 }
+
+/**
+ * A member target narrowed by the class that declares it.
+ *
+ * `symbol` alone is ambiguous the moment two classes declare a `kind` or
+ * a `size`, and picking the first match silently refactors the wrong
+ * one. With no `class` given this is exactly `resolveTarget`, so callers
+ * can pass their input through unconditionally.
+ */
+export function resolveMemberTarget(
+  session: TsProjectSession,
+  input: SymbolTarget & { class?: string },
+): ResolvedTarget {
+  if (input.symbol === undefined || input.class === undefined) return resolveTarget(session, input);
+  const candidates = findDeclarations(session, input.symbol, input.file).filter((candidate) => {
+    const parent = candidate.declaration?.parent;
+    const container = parent && ts.isClassLike(parent) ? parent : undefined;
+    return container?.name?.text === input.class;
+  });
+  if (candidates.length === 0) {
+    throw new Error(`No member named "${input.symbol}" is declared on class "${input.class}"`);
+  }
+  if (new Set(candidates.map((candidate) => candidate.file)).size > 1) {
+    const locations = candidates
+      .map((candidate) => `${candidate.file}:${candidate.position.line + 1}`)
+      .join('\n  ');
+    throw new Error(
+      `"${input.class}.${input.symbol}" is declared in multiple files; disambiguate with ` +
+        `file/line/character:\n  ${locations}`,
+    );
+  }
+  return candidates[0]!;
+}
