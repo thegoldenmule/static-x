@@ -184,6 +184,26 @@ export function unalias(checker: ts.TypeChecker, symbol: ts.Symbol): ts.Symbol {
 }
 
 /**
+ * Whether two symbols denote the same binding.
+ *
+ * Identity is not enough, and the gap is not exotic: for an exported
+ * declaration referenced from its own file, `getSymbolAtLocation`
+ * returns the local symbol while `getSymbolsInScope` returns a distinct
+ * `ExportValue` symbol wrapping the same declaration.
+ * `getExportSymbolOfSymbol` does not bridge them. Comparing identity
+ * alone therefore reports every exported binding as "means something
+ * different here", in its own file — which is a refusal of work that is
+ * perfectly safe. Sharing a declaration is the reliable test.
+ */
+export function sameBinding(checker: ts.TypeChecker, a: ts.Symbol, b: ts.Symbol): boolean {
+  const left = unalias(checker, a);
+  const right = unalias(checker, b);
+  if (left === right) return true;
+  const theirs = right.declarations ?? [];
+  return (left.declarations ?? []).some((declaration) => theirs.includes(declaration));
+}
+
+/**
  * Whether evaluating this expression could do something observable.
  * Duplicating such an expression changes how many times it happens, and
  * dropping one changes whether it happens at all — neither of which a
@@ -243,7 +263,7 @@ export function captureConflicts(
   // imported name and reports the whole scope as missing.
   const atSite = new Map<string, ts.Symbol>();
   for (const symbol of checker.getSymbolsInScope(site, ts.SymbolFlags.All)) {
-    if (!atSite.has(symbol.name)) atSite.set(symbol.name, unalias(checker, symbol));
+    if (!atSite.has(symbol.name)) atSite.set(symbol.name, symbol);
   }
 
   const conflicts: CaptureConflict[] = [];
@@ -254,10 +274,11 @@ export function captureConflicts(
 
     const declared = checker.getSymbolAtLocation(identifier);
     if (!declared) continue;
-    const here = unalias(checker, declared);
     const there = atSite.get(identifier.text);
     if (!there) conflicts.push({ name: identifier.text, reason: 'missing' });
-    else if (there !== here) conflicts.push({ name: identifier.text, reason: 'different' });
+    else if (!sameBinding(checker, declared, there)) {
+      conflicts.push({ name: identifier.text, reason: 'different' });
+    }
   }
   return conflicts;
 }
