@@ -4,14 +4,10 @@ import { TsFerry } from '../ts/ferry/ferry.js';
 import { createTsRegistry } from '../ts/registry.js';
 import { formatResult, isOutputFormat } from './format.js';
 
-export interface CliIo {
-  out(line: string): void;
-  err(line: string): void;
-  /** Base for the paths text output prints. Default: process.cwd(). */
-  cwd?: string;
-  /** Reads all of stdin, for `--files-from -`. */
-  readStdin?(): Promise<string>;
-}
+import type { CliIo } from './io.js';
+
+// Re-exported so `runCli` and its io type still arrive together.
+export type { CliIo };
 
 const USAGE = [
   "Usage: static-x <tool> --project <root> [--input '<json>']",

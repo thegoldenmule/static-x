@@ -19,7 +19,7 @@ import { TsFerry } from '../ts/ferry/ferry.js';
 import { TS_DEFAULT_CHECKS } from '../ts/checks.js';
 import { createTsRegistry } from '../ts/registry.js';
 import { findingLine } from './format.js';
-import type { CliIo } from './run.js';
+import type { CliIo } from './io.js';
 
 /**
  * `static-x check <suite>` — one process, every tool in the suite, one
@@ -322,6 +322,19 @@ export async function runBaselineCommand(argv: string[], io: CliIo): Promise<num
         `from ${String(findings.length)} findings in ${path.relative(io.cwd ?? process.cwd(), written.file) || written.file}`,
     );
     io.out('Commit it: later runs of this suite report only what came after.');
+
+    // Naming what was accepted at block level, because that is the one
+    // thing recording a baseline does that nobody asked for: these would
+    // have rejected a push, and now they will not. Silence here turns a
+    // baseline into a way to lose a real finding by running one command.
+    if (report.blocking.length > 0) {
+      io.out('');
+      io.out(
+        `${String(report.blocking.length)} of those would otherwise block this suite, and no ` +
+          'longer will:',
+      );
+      for (const finding of report.blocking) io.out(`  ${findingLine(finding, io.cwd ?? process.cwd())}`);
+    }
     return 0;
   } catch (error) {
     io.err(error instanceof Error ? error.message : String(error));

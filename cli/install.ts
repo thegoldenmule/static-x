@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util';
 import { CONFIG_FILENAME } from '../core/config/index.js';
 import type { CheckSuite } from '../core/checks/index.js';
 import { TS_DEFAULT_CHECKS } from '../ts/checks.js';
-import type { CliIo } from './run.js';
+import type { CliIo } from './io.js';
 
 /**
  * `static-x install` — write the hooks, merge the settings, and put the

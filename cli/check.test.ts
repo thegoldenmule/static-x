@@ -183,6 +183,23 @@ describe('static-x baseline', () => {
     expect(after.stderr()).not.toMatch(/wordy\.ts/);
   });
 
+  it('names what it just stopped blocking on', async () => {
+    const root = await fixtureCopy();
+    const c = capture({ cwd: root });
+    // `recorded` blocks on comment.long, so this baseline is accepting a
+    // finding that would otherwise reject — and has to say so.
+    expect(await runCli(['baseline', 'recorded', '--project', root], c.io)).toBe(0);
+    expect(c.stdout()).toMatch(/1 of those would otherwise block this suite, and no longer will:/);
+    expect(c.stdout()).toMatch(/wordy\.ts.*comment\.long/);
+  });
+
+  it('says nothing about blocking when there was none', async () => {
+    const root = await fixtureCopy();
+    const c = capture({ cwd: root });
+    await runCli(['baseline', 'advisory', '--project', root], c.io);
+    expect(c.stdout()).not.toMatch(/would otherwise block/);
+  });
+
   it('exits 2 on an unknown suite', async () => {
     const c = capture();
     expect(await runCli(['baseline', 'nope', '--project', FIXTURE], c.io)).toBe(2);

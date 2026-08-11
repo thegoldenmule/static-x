@@ -65,7 +65,7 @@ They are not interchangeable, and which one is right depends on where a tool anc
 static-x baseline          # records the push suite as it stands now
 ```
 
-Commit the file. Later runs report only what came after. It is meant to shrink: every entry is a finding someone decided not to fix yet, and re-running rewrites it from scratch, so an entry that no longer reproduces disappears rather than lingering as a permanent excuse.
+Commit the file. Later runs report only what came after. It names anything it just accepted at `block` level — a baseline is the one command that can lose you a real finding, so it does not do that quietly. It is meant to shrink: every entry is a finding someone decided not to fix yet, and re-running rewrites it from scratch, so an entry that no longer reproduces disappears rather than lingering as a permanent excuse.
 
 A policy the event cannot supply the inputs for degrades to the next broader one and says so. Silence there would be the dangerous option — a gate that quietly stopped filtering looks exactly like a gate that found something real.
 
