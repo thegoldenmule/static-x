@@ -101,6 +101,42 @@ Ten fixes and one regression is still a refusal. Writing a baseline that accommo
 
 It is dry-run by default, like every mutating tool here, and **not a hook and not a CI step**. A ratchet that runs automatically locks in whatever strictness one machine reached on a good day, and the next person to push is blocked by someone else's luck. Run it when you want to bank progress.
 
+## Working the backlog down
+
+A baseline is a debt register. `static-x todo` is how you spend it down:
+
+```sh
+static-x todo                    # what the baseline is hiding, grouped by file
+static-x todo --limit 8          # the next file's worth
+static-x todo --format json      # with data.name, for an ignore entry
+```
+
+It lists the findings the baseline accounts for — the opposite question to `check`, which reports only what is new. Files with the most findings come first, because one edit and one test run is the cheapest unit of progress available.
+
+**It is restricted by default to codes whose fix a typecheck and a test run can actually vouch for**: `async.floating-promise`, `comment.stale-ref`, `comment.stale-param`, `dupes.function`. Everything else is reported as held back rather than offered as work, and the reasons differ. Deleting a dead export may remove API something outside the project imports, which the tool says in its own message and no test suite here would catch. Comment-length thresholds are taste, and an agent shortening comments to satisfy a number makes the code worse. Removing a type assertion means proving the type, and the cheap fix hides the hole rather than closing it. `--all` drops the restriction for a human deciding; `todo.codes` in `static-x.json` replaces the list for a project that disagrees.
+
+### The loop
+
+`static-x install` writes a Claude Code skill, [`static-x-backlog`](../.claude/skills/static-x-backlog/SKILL.md), that drives this:
+
+```sh
+static-x todo --limit 8                               # take the next file
+                                                      # decide each item
+npm run typecheck && npm run lint && npx vitest run    # prove nothing broke
+static-x ratchet --apply                              # bank it — baseline shrinks
+git commit                                            # one file, one commit
+```
+
+Every finding gets one of three answers, and **fixing is not the default**:
+
+- **Fix it** — the finding is right and the correct change is clear.
+- **Ignore it** — the finding is wrong. Record the exact `data.name` under that tool's `ignore` in `static-x.json`. This is a real answer: `comment.stale-ref` cannot tell a stale reference from a correct one naming something outside the project, so a comment citing a compiler API or a SQL function is flagged and is not a defect.
+- **Leave it** — you are not sure, or the fix is a design decision. A wrong fix costs more than an unfixed finding.
+
+The one rule that matters: **never run `static-x baseline` inside the loop.** If `ratchet` refuses because something regressed, something broke — fix it or revert it. Re-baselining would launder the regression into the record, which is the single failure this whole design exists to prevent.
+
+That is not hypothetical. The first real iteration in this repository went: four `comment.stale-ref` findings at the head of the queue, all naming genuine TypeScript compiler APIs (`createArrayTypeNode`, `parenthesizeNonArrayTypeOfPostfixType` — checked against `typescript.js`), so all four were `ignore`. Then `ratchet` **refused**, because unrelated work in the same session had exported two types nothing imported. Fixing those and re-running took the baseline from 327 to 323.
+
 ## Exit codes
 
 `check` follows the CLI's: **0** clean (advisory findings included), **1** blocked, **2** could not run. A git hook rejects on 1 and lets 2 through, so a project mid-refactor can never leave you unable to commit.

@@ -19,6 +19,7 @@ npm run sx -- ts/graph/cycles --project fixtures/graph-ts --format text   # note
 npm run sx -- check --list --project .          # the gates this project defines
 npm run sx -- check commit --project .          # what a pre-commit hook runs
 npm run sx -- ratchet --project .               # what could be tightened (dry run)
+npm run sx -- todo --project .                  # the backlog the baseline hides
 npm run mcp                        # the MCP server on stdio
 ```
 
@@ -64,6 +65,12 @@ catches a dropped promise.
 lets a gate go on a codebase that never had one; ratchet **only tightens**, and refuses the whole run
 while anything has regressed. Keep that split — a ratchet that quietly banked a regression would be
 worse than not having one. It is deliberately not a hook and not a CI step.
+
+`todo` is the backlog that baseline hid, as a work queue, and `TS_FIXABLE_CODES` in `ts/checks.ts`
+decides what an unattended agent may act on. The test for that list is not "is the finding true" —
+they are all true — but "can a typecheck and a test run vouch for the fix". Adding a code whose fix
+is a deletion or a judgment call there is how this becomes destructive. `.claude/skills/` holds the
+loop that drives it, shipped by `install`.
 
 `novelty` is the part that makes a gate installable, and the part to think hardest about when adding
 a tool to one. Unfiltered, the commit suite finds something in 79 of this repository's 141 source

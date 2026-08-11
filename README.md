@@ -67,7 +67,7 @@ Blocking (1):
 commit: reporting changed-lines
 ```
 
-The same defect in a file you didn't touch stays silent — the commit suite reports on changed lines, which is what makes it installable on a codebase that has never had a gate. `--no-verify` bypasses it once. `static-x check --list` shows every suite and what it enforces; [hooks](hooks/README.md) explains how to change them, and how `static-x ratchet` tightens them as you fix things.
+The same defect in a file you didn't touch stays silent — the commit suite reports on changed lines, which is what makes it installable on a codebase that has never had a gate. `--no-verify` bypasses it once. `static-x check --list` shows every suite and what it enforces; [hooks](hooks/README.md) explains how to change them, how `static-x todo` turns the baseline back into a work queue, and how `static-x ratchet` tightens the gates as you spend that queue down.
 
 To take it all back out: delete `.husky/pre-commit` and `.husky/pre-push` (or the same files under `.git/hooks/`), the `hooks.PostToolUse` entry in `.claude/settings.json`, and `static-x.json` / `static-x-baseline.json`.
 
@@ -110,7 +110,7 @@ static-x ts/types/loopholes --project . --input '{"includeTests": false}'
 
 Usage is `static-x <tool> --project <root> [--input '<json>'] [--files <path>]... [--files-from <file|->] [--format json|text]`. Running with no arguments lists the available tools. Output is JSON on stdout — findings for analysis tools, a `WorkspaceEdit` plus status for refactors — so results pipe cleanly into `jq` or an LLM. Exit codes: `0` clean, `1` findings reported, `2` usage or execution error.
 
-Four subcommands sit alongside the tools, named without a slash so they can never collide with one: `check <suite>` runs a named group of tools over a single project session, `baseline` records what a suite reports now, `ratchet` tightens the gates as far as the project already allows, and `install` writes the hooks that call them — see [hooks](hooks/README.md).
+Five subcommands sit alongside the tools, named without a slash so they can never collide with one: `check <suite>` runs a named group of tools over a single project session, `baseline` records what a suite reports now, `todo` lists what that baseline is hiding as a work queue, `ratchet` tightens the gates as far as the project already allows, and `install` writes the hooks that call them — see [hooks](hooks/README.md).
 
 Each tool's README ([table here](ts/README.md)) documents its options, output shape, and what its findings mean. To use the tools from Claude Code conversationally, register the [MCP server](mcp/README.md).
 
