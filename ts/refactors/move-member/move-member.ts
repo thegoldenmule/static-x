@@ -19,7 +19,7 @@ import { filesTouched, refactorOutputSchema, type RefactorOutput } from '../outp
 import { classifyReferences, isUse, type ClassifiedReference } from '../references.js';
 import { formatSettings, userPreferences } from '../refactor-action.js';
 import { locationOf } from '../signatures.js';
-import { unalias } from '../substitution.js';
+import { sameBinding, unalias } from '../substitution.js';
 
 /**
  * Moves a static member out of the class that declares it — ReSharper's
@@ -534,7 +534,11 @@ function dependencyImports(
 
     const there = scope.get(node.text);
     if (there !== undefined) {
-      if (unalias(checker, there) !== resolved) {
+      // sameBinding, not identity: an exported declaration referenced
+      // from its own file yields two different symbols for one binding,
+      // so `!==` refuses a move into the very module that exports what
+      // the member reads.
+      if (!sameBinding(checker, there, resolved)) {
         throw new Error(
           `"${node.text}" means something different in ${destination.file}, so ${where} would ` +
             'silently change meaning if it moved there',
