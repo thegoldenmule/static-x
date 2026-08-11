@@ -43,6 +43,8 @@ Tools are listed in the alphabetical order the CLI and MCP listings display.
 
 Every tool here also takes `files`, a list of paths to report findings in, so a hook can check just what changed without narrowing the analysis behind the findings — see [check only what changed](../README.md#check-only-what-changed).
 
+The analysis tools are also grouped into [check suites](../hooks/README.md) that gate a commit, a push, or a Claude Code edit. `checks.ts` holds the defaults; which tools block there is decided by running them against this repository, not by how serious they sound.
+
 ## Layout
 
 - `server/` — spawns `typescript-language-server` and completes the LSP handshake
@@ -55,3 +57,4 @@ Every tool here also takes `files`, a list of paths to report findings in, so a 
   signature and substitution analysis, import bookkeeping, and the `WorkspaceEdit` conversion — see
   [the roadmap](../ROADMAP.md#shared-machinery)
 - `registry.ts` — registers every shipped tool for the CLI and MCP adapters
+- `checks.ts` — the default commit, push and Claude check suites

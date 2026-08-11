@@ -10,12 +10,14 @@ start from the working tree.
 ```sh
 npm run typecheck                  # tsc, noEmit
 npm run lint                       # eslint, type-checked rules
-npx vitest run                     # 750 tests, ~40s wall (parallel; ~9 min of real compilation)
+npx vitest run                     # 813 tests, ~42s wall (parallel; ~9 min of real compilation)
 npx vitest run ts/refactors/rename # one file, or any path substring
 npx vitest run -t 'repoints every importer'   # one test by name
 npm run test:watch
 
 npm run sx -- ts/graph/cycles --project fixtures/graph-ts --format text   # note the `--`
+npm run sx -- check --list --project .          # the gates this project defines
+npm run sx -- check commit --project .          # what a pre-commit hook runs
 npm run mcp                        # the MCP server on stdio
 ```
 
@@ -32,7 +34,8 @@ Four layers, and the boundaries between them are the point.
 **`core/`** holds contracts no language knows about: `Finding`, `WorkspaceEdit`, `Tool`,
 `ProjectSession`. Positions and edits are LSP-shaped so output can flow to and from language servers
 without translation. Also here: `static-x.json` loading and finding filters (`core/config`), the
-reporting-scope set (`core/files`), and edit application (`core/edits`).
+reporting-scope set (`core/files`), edit application (`core/edits`), and check suites
+(`core/checks`).
 
 **`ts/`** is the TypeScript language pack — the tools plus the machinery to bind to a project. Other
 languages would sit beside it.
@@ -40,7 +43,30 @@ languages would sit beside it.
 **`cli/` and `mcp/`** are delivery adapters. They parse argv or MCP arguments and print; they hold no
 analysis. A tool is `run(session, input)` and never learns which one called it.
 
-**`hooks/`** are worked examples, not machinery.
+**`hooks/`** is what `static-x install` writes, kept in the tree as reference. `hooks.test.ts`
+asserts the two are byte-identical, so neither can drift.
+
+### Gates: what a hook runs
+
+A hook runs `static-x check <suite>`, never a loop over the CLI: `core/checks` runs every tool in the
+suite through one dispatcher, so the suite pays project load once — 5.9s of five processes against
+0.93s of one, measured here.
+
+A suite lives in `static-x.json` under `checks`, beside the tuning the same tools already read. Each
+tool is `block`, `warn`, or `off`, with optional per-gate tuning layered over the project's own. The
+TypeScript defaults are `ts/checks.ts`, and their block/warn split is measured, not chosen: only
+`async/floating-promises` and `graph/cycles` report nothing against this repository, so only those
+two block. A gate that blocks on taste gets `--no-verify`'d, and is then worth nothing on the day it
+catches a dropped promise.
+
+`novelty` is the part that makes a gate installable, and the part to think hardest about when adding
+a tool to one. Unfiltered, the commit suite finds something in 79 of this repository's 141 source
+files — a hook reporting all of that rejects most commits over code its author never wrote.
+`changed-lines` intersects findings with the diff's hunks and suits any tool that anchors on the
+offending code. It is wrong for `graph/cycles` (anchored on one file of the SCC) and
+`graph/dead-exports` (reported in the *declaring* file, not the one whose last import you deleted) —
+those need `baseline`. A policy the event cannot supply inputs for degrades to the next broader one
+and **says so**: silence there looks exactly like a gate that found something real.
 
 ### The path a call takes
 
@@ -149,6 +175,9 @@ reference implementations for the mutating and analysis shapes.
   in `package.json`, a guarantee the language erases — say so in `warnings`. A green compile is not
   proof of safety, and a tool that implies otherwise is worse than no tool.
 - Semantic, not lexical: if grep could do it, it does not belong here.
+- A new analysis tool decides whether it belongs in a default suite (`ts/checks.ts`) by running
+  against this repository first. It blocks only if it reports nothing here or close to it; anything
+  else goes in at `warn`, if at all. Record the count in the commit — that number is the argument.
 - A new tool is listed in `ts/README.md`'s table too; `ROADMAP.md` (refactorings) and
   `docs/next-roadmap.md` (analysis) record what has been considered and what was cut, with the
   reason — check them before proposing work.
