@@ -236,4 +236,13 @@ describe('ts/refactors/inline-type-alias', () => {
       }
     });
   });
+
+  it('refuses a branded alias, whose type is per-occurrence', { timeout: 30_000 }, async () => {
+    // `unique symbol` is nominal: the alias gives every use one type,
+    // and inlining its text gives each use its own. Found on a real
+    // package, where the guard caught it as an opaque TS2345.
+    await expect(inlineTypeAlias.run(session, { symbol: 'OrderId' })).rejects.toThrow(
+      /unique symbol.*different type at every occurrence/s,
+    );
+  });
 });

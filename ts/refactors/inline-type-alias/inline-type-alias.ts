@@ -472,6 +472,35 @@ export const inlineTypeAlias: Tool<
     }
 
     const rhs = declaration.type;
+
+    // `unique symbol` is nominal: every occurrence is a distinct type.
+    // An alias holding one gives every use the *same* type; substituting
+    // its text gives each use its own, and they stop being assignable to
+    // each other. That is how branded types are built
+    // (`string & { readonly __brand: unique symbol }`), so this is the
+    // shape most likely to be aliased and the one most broken by
+    // inlining. Found on a real package, where it surfaced as an opaque
+    // TS2345 from the guard rather than a reason.
+    let nominal: ts.Node | undefined;
+    const findUnique = (node: ts.Node): void => {
+      if (
+        ts.isTypeOperatorNode(node) &&
+        node.operator === ts.SyntaxKind.UniqueKeyword
+      ) {
+        nominal ??= node;
+      }
+      ts.forEachChild(node, findUnique);
+    };
+    findUnique(rhs);
+    if (nominal) {
+      throw new Error(
+        `"${name}" contains \`${nominal.getText(declarationFile)}\`, which is a different type at ` +
+          'every occurrence. The alias gives every use one type; inlining its text would give ' +
+          'each use its own, and they would stop being assignable to one another. This is how a ' +
+          'branded type is built, and it is exactly what the alias is for.',
+      );
+    }
+
     const definition = rhs.getText(declarationFile);
     const rhsKey = tokenKey(rhs, declarationFile);
     const roots = dependencyRoots(rhs);

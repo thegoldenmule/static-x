@@ -42,3 +42,6 @@ export const EMPTY_ID: Id = '';
 export function depth(tree: Tree): number {
   return tree.children.length;
 }
+
+/** A branded type: `unique symbol` is a different type at each occurrence. */
+export type OrderId = string & { readonly __orderId: unique symbol };
