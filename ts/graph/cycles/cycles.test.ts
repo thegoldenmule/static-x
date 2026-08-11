@@ -124,8 +124,28 @@ describe('findCycles', () => {
     expect(findings[0]?.message).toContain('extracting the shared types');
   });
 
-  it('keeps a mixed value/type cycle at warning', () => {
+  it('does not call a loop that only closes through `import type` a runtime cycle', () => {
+    // This asserted `kind: 'value'` at warning until it was measured.
+    // `a → b` is erased, so at runtime b imports a and a imports
+    // nothing back: there is no loop, and no initialization order to be
+    // fragile. A component is a runtime cycle only if it is still
+    // strongly connected using value edges alone.
     const findings = findCycles(graphOf(edge('a.ts', 'b.ts', 0, true), edge('b.ts', 'a.ts')), ROOT);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      severity: 'info',
+      data: { typeOnly: true, kind: 'type-only' },
+    });
+    expect(findings[0]?.message).toContain('cannot be closed without an');
+  });
+
+  it('still reports a value loop that carries an extra type edge', () => {
+    // The distinguishing case: a → b → a closes on value edges alone,
+    // so the additional type-only edge changes nothing.
+    const findings = findCycles(
+      graphOf(edge('a.ts', 'b.ts'), edge('b.ts', 'a.ts', 1), edge('a.ts', 'b.ts', 2, true)),
+      ROOT,
+    );
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({
       severity: 'warning',

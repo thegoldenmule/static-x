@@ -145,30 +145,66 @@ function shortestLoop(
 export function findCycles(graph: ImportGraph, rootPath: string): Finding[] {
   const nodes = new Set<string>();
   const selfEdges = new Set<string>();
+  const valueSelfEdges = new Set<string>();
   const adjacency = new Map<string, string[]>();
+  const valueAdjacency = new Map<string, string[]>();
+  const link = (map: Map<string, string[]>, from: string, to: string): void => {
+    let targets = map.get(from);
+    if (!targets) {
+      targets = [];
+      map.set(from, targets);
+    }
+    if (!targets.includes(to)) targets.push(to);
+  };
   for (const edge of graph.edges) {
     nodes.add(edge.from);
     nodes.add(edge.to);
-    if (edge.from === edge.to) selfEdges.add(edge.from);
-    let targets = adjacency.get(edge.from);
-    if (!targets) {
-      targets = [];
-      adjacency.set(edge.from, targets);
+    if (edge.from === edge.to) {
+      selfEdges.add(edge.from);
+      if (!edge.typeOnly) valueSelfEdges.add(edge.from);
     }
-    if (!targets.includes(edge.to)) targets.push(edge.to);
+    link(adjacency, edge.from, edge.to);
+    if (!edge.typeOnly) link(valueAdjacency, edge.from, edge.to);
   }
   for (const targets of adjacency.values()) targets.sort();
+  for (const targets of valueAdjacency.values()) targets.sort();
   const sortedNodes = [...nodes].sort();
 
-  const results: { name: string; finding: Finding }[] = [];
+  // Whether a cycle survives to runtime is decided by the value edges
+  // alone, so the components are computed twice rather than once and
+  // labelled afterwards. Asking `innerEdges.every(typeOnly)` of a
+  // component built from *all* edges answers a different question: a
+  // loop that can only be closed through an `import type` still
+  // contains value edges elsewhere, so it was reported as a runtime
+  // cycle — "initialization order is fragile", at high confidence,
+  // about an edge the emit erases.
+  const planned: { component: string[]; typeOnly: boolean }[] = [];
+  const cyclic = (component: string[], loops: ReadonlySet<string>): boolean => {
+    if (component.length > 1) return true;
+    const only = component[0];
+    return only !== undefined && loops.has(only);
+  };
+  for (const component of stronglyConnectedComponents(sortedNodes, valueAdjacency)) {
+    if (cyclic(component, valueSelfEdges)) planned.push({ component, typeOnly: false });
+  }
+  const atRuntime = new Set(planned.flatMap((entry) => entry.component));
   for (const component of stronglyConnectedComponents(sortedNodes, adjacency)) {
-    if (component.length === 1) {
-      const only = component[0];
-      if (only === undefined || !selfEdges.has(only)) continue;
-    }
+    if (!cyclic(component, selfEdges)) continue;
+    // A tangle holding a runtime cycle is already reported, at the more
+    // severe of its two truths. Reporting it again as type-only would
+    // describe the same files twice and disagree with itself.
+    if (component.some((file) => atRuntime.has(file))) continue;
+    planned.push({ component, typeOnly: true });
+  }
+
+  const results: { name: string; finding: Finding }[] = [];
+  for (const { component, typeOnly } of planned) {
     const members = new Set(component);
-    const innerEdges = graph.edges.filter((e) => members.has(e.from) && members.has(e.to));
-    const typeOnly = innerEdges.every((e) => e.typeOnly);
+    // A runtime cycle is described by its runtime edges: the loop drawn
+    // and the anchor blamed both have to be edges that survive the emit.
+    const pool = typeOnly ? graph.edges : graph.edges.filter((e) => !e.typeOnly);
+    const scoped = typeOnly ? adjacency : valueAdjacency;
+    const innerEdges = pool.filter((e) => members.has(e.from) && members.has(e.to));
 
     const files = component
       .map((file) => ({ file, relative: toProjectRelative(rootPath, file) }))
@@ -178,7 +214,7 @@ export function findCycles(graph: ImportGraph, rootPath: string): Finding[] {
 
     const innerAdjacency = new Map<string, string[]>();
     for (const member of component) {
-      innerAdjacency.set(member, (adjacency.get(member) ?? []).filter((t) => members.has(t)));
+      innerAdjacency.set(member, (scoped.get(member) ?? []).filter((t) => members.has(t)));
     }
     const loop = shortestLoop(anchor.file, innerAdjacency).map((f) =>
       toProjectRelative(rootPath, f),
@@ -190,10 +226,10 @@ export function findCycles(graph: ImportGraph, rootPath: string): Finding[] {
         ? ` The loop is part of a strongly-connected group of ${size} files that all reach each other.`
         : '';
     const message = typeOnly
-      ? `Type-only import cycle: ${loopText}. Every edge is \`import type\`, so the cycle is ` +
-        'erased at runtime — legal and common, but it still tangles the module structure; ' +
-        'break it the same way as a value cycle, by extracting the shared types into a ' +
-        'module both sides import.' +
+      ? `Type-only import cycle: ${loopText}. The loop cannot be closed without an ` +
+        '`import type`, so it is erased at runtime — legal and common, but it still tangles ' +
+        'the module structure; break it the same way as a value cycle, by extracting the ' +
+        'shared types into a module both sides import.' +
         groupNote
       : `Import cycle: ${loopText}. Import cycles make initialization order fragile and ` +
         'defeat tree-shaking; break the cycle by extracting the shared piece into a module ' +
