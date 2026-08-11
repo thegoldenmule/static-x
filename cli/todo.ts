@@ -9,7 +9,6 @@ import {
   type TodoList,
 } from '../core/checks/index.js';
 import { loadProjectConfig, type ProjectConfig } from '../core/config/index.js';
-import type { Finding } from '../core/tool/index.js';
 import { TsFerry } from '../ts/ferry/ferry.js';
 import { TS_DEFAULT_CHECKS, TS_FIXABLE_CODES } from '../ts/checks.js';
 import { createTsRegistry } from '../ts/registry.js';
@@ -149,12 +148,12 @@ export async function runTodo(argv: string[], io: CliIo): Promise<number> {
   try {
     // Unfiltered: novelty would hide precisely what we are asking for.
     const report = await runSuite({ suite, rootPath, dispatcher: ferry });
-    const findings: Finding[] = [...report.blocking, ...report.advisory];
+    const codes = report.outcomes.flatMap((o) => o.findings.map((f) => f.code));
     todo = planTodo({
-      findings,
+      outcomes: report.outcomes,
       baseline,
       rootPath,
-      fixable: values.all ? new Set(findings.map((f) => f.code)) : fixableFor(config),
+      fixable: values.all ? new Set(codes) : fixableFor(config),
       ...(values.code ? { only: new Set(values.code) } : {}),
     });
   } catch (error) {

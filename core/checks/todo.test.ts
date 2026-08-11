@@ -18,9 +18,26 @@ function finding(file: string, code: string, name: string, line = 0): Finding {
 
 const FIXABLE = new Set(['comment.stale-ref', 'dupes.function']);
 
+/** Groups findings under the tool whose name their code implies. */
+function outcomesFor(findings: Finding[]): { tool: string; findings: Finding[] }[] {
+  const TOOL: Record<string, string> = {
+    'comment.stale-ref': 'ts/comments/stale-refs',
+    'dupes.function': 'ts/dupes/functions',
+    'graph.dead-export': 'ts/graph/dead-exports',
+  };
+  const by = new Map<string, Finding[]>();
+  for (const f of findings) {
+    const tool = TOOL[f.code] ?? f.code;
+    const list = by.get(tool);
+    if (list) list.push(f);
+    else by.set(tool, [f]);
+  }
+  return [...by].map(([tool, fs]) => ({ tool, findings: fs }));
+}
+
 function plan(findings: Finding[], baseline: [string, number][], only?: string[]) {
   return planTodo({
-    findings,
+    outcomes: outcomesFor(findings),
     baseline: new Map(baseline),
     rootPath: ROOT,
     fixable: FIXABLE,
@@ -47,6 +64,17 @@ describe('planTodo', () => {
     expect(todo.files.map((f) => f.file)).toEqual(['a.ts', 'b.ts']);
     // Within a file, in source order.
     expect(todo.files[0]?.items.map((i) => i.finding.range.start.line)).toEqual([2, 5]);
+  });
+
+  it('carries the tool, which is the config path an ignore entry needs', () => {
+    // comment.stale-ref cannot be turned into ts/comments/stale-refs by
+    // rule: the code is singular, the tool plural, and stale-param comes
+    // from the same tool. Anyone writing an ignore would be guessing.
+    const todo = plan(
+      [finding('a.ts', 'comment.stale-ref', 'X')],
+      [['a.ts|comment.stale-ref|X', 1]],
+    );
+    expect(todo.files[0]?.items[0]?.tool).toBe('ts/comments/stale-refs');
   });
 
   it('excludes a regression, which is check and ratchet business', () => {

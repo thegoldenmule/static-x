@@ -37,16 +37,37 @@ a cop-out: `comment.stale-ref` cannot tell a stale reference from a correct one
 naming something outside the project, so a comment citing a TypeScript compiler
 API, an SQL function, or a spec symbol is flagged and is not a defect.
 
-Record it in `static-x.json` under the tool that reported it, using the finding's
-exact `data.name`:
+Record it in `static-x.json`. Take both values from `static-x todo --format json`
+— never guess either one:
+
+- **where**: the item's `tool`, with `/` replaced by `.`, then `ignore`.
+  `ts/comments/stale-refs` → `ts.comments.stale-refs.ignore`.
+- **what**: the finding's `data.name`, exactly. `ignore` matches it whole.
 
 ```json
 { "ts": { "comments": { "stale-refs": { "ignore": ["createArrayTypeNode"] } } } }
 ```
 
-Get `data.name` from `static-x todo --format json`. This shrinks the backlog
-honestly — the finding stops being reported for everyone, which is right if it
-was never a defect.
+The `tool` field exists because the path is not derivable from the finding: codes
+are singular where tools are plural, and `comment.stale-ref` and
+`comment.stale-param` come from the same tool. Append to any `ignore` array
+already there rather than replacing it, and leave the `checks` block alone —
+that is the gate, not the tuning.
+
+**`ignore` matches project-wide, not per file.** One entry can silence far more
+than the finding in front of you, and that cuts both ways. Look before writing it:
+
+```sh
+static-x <tool> --project . --format json | grep -c '"name": "<the-name>"'
+```
+
+Silencing 24 at once is right when all 24 are the same false positive — a product
+name in prose, say. It is wrong for a short or common identifier: `"x"` matches 7
+unrelated findings here, and some of them may be real. If the name is generic,
+fix the comment instead of ignoring it.
+
+Say the count in the commit body. An `ignore` entry is a claim that the tool is
+wrong that many times over, and the next person needs to be able to check it.
 
 **Leave it.** You do not understand the code well enough to be sure, or the fix
 is a design decision (where should the shared helper live? is this duplication

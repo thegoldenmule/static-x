@@ -22,6 +22,16 @@ interface TodoItem {
   finding: Finding;
   /** Project-relative, for stable grouping and display. */
   file: string;
+  /**
+   * The tool that reported it, which is also the config path to silence
+   * it: static-x.json mirrors tool paths, so `ts/comments/stale-refs`
+   * is `ts.comments.stale-refs`. Carried explicitly because it cannot be
+   * derived from the finding — `comment.stale-ref` and
+   * `comment.stale-param` come from the same tool, and every code is
+   * singular where its tool is plural. Anyone recording an `ignore`
+   * would otherwise be guessing.
+   */
+  tool: string;
 }
 
 export interface TodoList {
@@ -36,7 +46,8 @@ export interface TodoList {
 }
 
 interface TodoInput {
-  findings: readonly Finding[];
+  /** Findings with the tool that produced them, as runSuite reports. */
+  outcomes: readonly { tool: string; findings: readonly Finding[] }[];
   baseline: Baseline;
   rootPath: string;
   /** Finding codes an agent may act on. */
@@ -53,22 +64,24 @@ interface TodoInput {
  * just done.
  */
 export function planTodo(input: TodoInput): TodoList {
-  const { findings, baseline, rootPath, fixable, only } = input;
+  const { outcomes, baseline, rootPath, fixable, only } = input;
 
   const remaining = new Map(baseline);
-  const backlog: Finding[] = [];
-  for (const finding of findings) {
-    const key = fingerprint(finding, rootPath);
-    const budget = remaining.get(key) ?? 0;
-    if (budget > 0) {
-      remaining.set(key, budget - 1);
-      backlog.push(finding);
+  const backlog: { tool: string; finding: Finding }[] = [];
+  for (const outcome of outcomes) {
+    for (const finding of outcome.findings) {
+      const key = fingerprint(finding, rootPath);
+      const budget = remaining.get(key) ?? 0;
+      if (budget > 0) {
+        remaining.set(key, budget - 1);
+        backlog.push({ tool: outcome.tool, finding });
+      }
     }
   }
 
   const excluded = new Map<string, number>();
   const actionable: TodoItem[] = [];
-  for (const finding of backlog) {
+  for (const { tool, finding } of backlog) {
     if (!fixable.has(finding.code) || (only && !only.has(finding.code))) {
       excluded.set(finding.code, (excluded.get(finding.code) ?? 0) + 1);
       continue;
@@ -76,6 +89,7 @@ export function planTodo(input: TodoInput): TodoList {
     actionable.push({
       finding,
       file: path.relative(rootPath, finding.file) || path.basename(finding.file),
+      tool,
     });
   }
 
