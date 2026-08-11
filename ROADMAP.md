@@ -2,7 +2,9 @@
 
 [ReSharper's refactoring index](https://www.jetbrains.com/help/resharper/Refactorings__Index.html) is the most complete catalogue of code transformations any tool ships — 61 named refactorings, accumulated over twenty years of watching people rewrite C#. This document translates every one of them into TypeScript and into this repo's tool contract, so the set of refactorings static-x should own is a decision already made rather than one taken a tool at a time.
 
-The 61 entries collapse to **39 TypeScript tools**; **10 have no TypeScript meaning at all**, and saying precisely why is part of the translation. **Twenty-six are shipped, covering thirty-two index entries** — see the ✅ rows below.
+The 61 entries collapse to **TypeScript tools of which 28 are shipped, covering 34 index entries** — see the ✅ rows below. **10 have no TypeScript meaning at all**; a further **13 have a meaning and will still not be built**, either because modern TypeScript contains no instances of the construct or because the entry's stated justification did not survive being measured. Saying precisely why, in all three cases, is part of the translation.
+
+The index is now closed. Nothing in it is waiting to be built, and the last round's work was retiring rows with evidence rather than adding tools.
 
 ## Translating a refactoring
 
@@ -23,7 +25,9 @@ Symbol addressing is what an LLM produces reliably; range addressing is what it 
 
 **The guard is the product.** Before writing, the project is typechecked in memory with the edit applied, and any diagnostic the edit *introduces* refuses it — the mechanism [`rename`](ts/refactors/rename/rename.ts) already uses. Where that guard is a complete oracle, a refactoring is trustworthy no matter how naive its analysis. Where the failure mode is code that still compiles and now means something else, the guard is silent, and the tool has to say so out loud. Each entry below is ranked partly on which of those two it is.
 
-**Status legend.** ✅ shipped · ◻ specified, unbuilt · ✖ no TypeScript meaning.
+**Status legend.** ✅ shipped · ✖ retired, with the reason recorded · ◻ᵗ conditional, with a written trigger · ✅ ✖ partly shipped, the rest permanently out.
+
+There is no ◻ any more. Every entry now carries a disposition, which is what this document set out to produce: not that everything is built, but that nothing is waiting on a decision no one has taken.
 
 ---
 
@@ -69,8 +73,7 @@ Both halves are now closed. `applicableActions` passes `'invoked'`, so the paths
 | ✅ | Move to Folder | `ts/refactors/move-file` | Moves a file and rewrites every specifier that resolves to it, plus the moved file's own relative specifiers. C# links folder and namespace only by convention; TypeScript makes the path part of the module's identity. | file |
 | ✅ | Move to Another Type | `ts/refactors/move-member` | Moves a static member or module-level binding to another container. The idiomatic TS destination is usually a plain exported function — modules already provide the namespacing C# needs static classes for, and free functions tree-shake. | symbol |
 | ✅ | Move Instance Method | `ts/refactors/move-instance-method` | Feature-envy surgery: moves a method onto the class of one of its parameters, flipping the receiver so `a.m(b, c)` becomes `b.m(a, c)`. Ports unchanged — TS classes carry state and prototype methods exactly as C# types do. | symbol |
-| ◻ | Move Type to Outer Scope | `ts/refactors/move-to-outer-scope` | Lifts a declaration nested in a function body or `namespace` block out to module scope. TS nesting is *lexical*, not the C# nested-type kind, so the inner declaration may close over the outer scope's variables and type parameters — that capture is the hard part. | symbol |
-| ◻ | Copy type | `ts/refactors/copy-type` | Duplicates a class, interface, alias, or enum into another file under a new name, rewriting self-references and adding the imports the copy needs, leaving existing references on the original. | symbol |
+| ◻ᵗ | Copy type | `ts/refactors/copy-type` | Duplicates a class, interface, alias, or enum into another file under a new name, rewriting self-references and adding the imports the copy needs. **Conditional, with a written trigger.** Demand is 12 hand-made copies in 1,729 declarations, of which one would have come out differently. Its import writing needs `dependencyImports`/`importEdits`, private to `move-member` — and `imports.ts` exists because *five* tools converged independently, not because one might. Build it when a second consumer forces that lift, at which point it is a few hundred lines on top. Do not lift speculatively. | symbol |
 
 ### Extract
 
@@ -78,16 +81,13 @@ Both halves are now closed. `applicableActions` passes `'invoked'`, so the paths
 | --- | --- | --- | --- | --- |
 | ✅ | Extract Method | `ts/refactors/extract` | Lifts a statement range or expression into a new function, computing parameters and return value from data flow through the selection. Async-ness, captured generics, and `this` usage propagate into the signature. Addressed by the code itself, not by offsets. | select |
 | ✅ | Introduce Variable | `ts/refactors/extract` | Lifts an expression into a `const` in an enclosing scope — a *scope* of the same operation as Extract Method rather than a separate refactoring, which is why one tool covers both. | select |
-| ◻ | Introduce Variable for Substring | `ts/refactors/extract-variable` | Extracts part of a string literal, which in TypeScript means converting to a template literal and referencing the binding as `${name}` — one idiomatic answer where C# offers concatenation or `string.Format`, and an escape-aware conversion rather than a text edit. | range |
 | ✅ | Introduce type alias | `ts/refactors/extract-type` | Lifts a type expression into a named `type X = …`. Shipped by TypeScript itself as `refactor.extract.type`. | range |
 | ✅ | Convert Anonymous to Named Type | `ts/refactors/extract-type` | C# anonymous types are *values*; the TypeScript analogue is the anonymous *type*. The half worth building beyond TypeScript's own action is `dedupe` — replacing every structurally identical inline occurrence project-wide. | range |
-| ◻ | Introduce typedef | `ts/refactors/extract-type` | The same extraction emitting a JSDoc `@typedef`, meaningful only in a `.js` file under `checkJs`. TypeScript ships it as `refactor.extract.typedef`. | range |
 | ✅ | Introduce Field | `ts/refactors/extract` | Hoists an expression into a class property, offered as the "readonly field" scope. TypeScript has no field/property distinction — one member kind with `readonly`, `private`, and `#name` as modifiers — so this is "introduce class property" plus a placement decision C# doesn't face. | select |
 | ✅ | Introduce Parameter | `ts/refactors/introduce-parameter` | Turns an expression inside a function into a new parameter, passing the original expression at every call site. Structural typing makes the function's *type*, not just its declaration, part of the blast radius. | range |
 | ✅ | Extract Interface | `ts/refactors/extract-interface` | Generates an interface from a class's public members and adds `implements`. Structurally, that clause is a documented assertion rather than a requirement — consumers already accept the shape — so the half that buys anything is rewriting use sites from `C` to `I`. | symbol |
 | ✅ | Extract Superclass | `ts/refactors/extract-superclass` | Pulls members into a new base class. The cheapest member-move in the family: inheritance preserves every call site, so there is no project-wide reference rewrite at all. | symbol |
 | ✅ | Extract Class | `ts/refactors/extract-class` | The god-class split — members into a new class held by a private field, `this.m()` rewritten to `this.helper.m()`, with delegating stubs or a project-wide call-site rewrite. | symbol |
-| ◻ | Move to Resource | `ts/refactors/extract-string-constant` | No resource file exists to move to; the surviving intent is hoisting a literal into a shared exported `const`. Needs a compiler because of literal types: `const MSG = 'ok'` keeps the type `'ok'`, but the same literal in an object property widens to `string` and silently breaks narrowing at the use site. | range |
 
 ### Inline
 
@@ -97,17 +97,14 @@ Both halves are now closed. `applicableActions` passes `'invoked'`, so the paths
 | ✅ | Inline Variable | `ts/refactors/inline-variable` | Replaces every read of a `const` with its initializer. The one entry TypeScript already implements outright, as `refactor.inline.variable`. | symbol |
 | ✅ | Inline Method | `ts/refactors/inline-function` | Substitutes a function's body at its call sites and deletes it. Applies to all three TS callable forms; needs a precedence-aware expression printer the repo doesn't have yet, and re-evaluates side effects when an impure argument appears twice. | symbol |
 | ✅ | Inline type alias | `ts/refactors/inline-type-alias` | Substitutes an alias's right-hand side at every use — `type Id = string \| number` used as `Id[]` becomes `(string \| number)[]`. C# inlines a `using X = …` directive; TS aliases are generic, conditional, and mapped, so the TS form does strictly more. | symbol |
-| ◻ | Inline typedef | `ts/refactors/inline-type-alias` | The same operation over the JSDoc declaration form. TypeScript has no `typedef` keyword. | symbol |
 | ✅ | Inline Field | `ts/refactors/inline-field` | Replaces reads of a never-reassigned class property with its initializer. Splits from the local-variable case because a field read has a *receiver*: `load().size` inlined drops the call, and an initializer reading `this` inlined at `other.size` reads the wrong object. Both compile. | symbol |
-| ◻ | Inline Class | `ts/refactors/inline-class` | Folds a single-consumer class back into its consumer, rewriting `this.helper.m()` to `this.m()`. | symbol |
 
 ### Signature
 
 | Status | ReSharper | Tool | In TypeScript | Addr. |
 | --- | --- | --- | --- | --- |
-| ◻ | Change Signature | `ts/refactors/change-signature` | Adds, removes, reorders, retypes, or defaults parameters and updates every call site — across overload lists, interface signatures, and every override in the hierarchy. The highest-value entry in the index; the [next round](#the-next-five) ships the options-object form, where its characteristic trap cannot exist. | symbol |
+| ✅ ✖ | Change Signature | `ts/refactors/change-signature` | **Options-object form shipped; positional form permanently out.** Converting parameters to a named object updates every call site across files, overload lists and overrides. Reordering or retyping positional parameters does not ship and will not: a reordered pair of compatible type compiles green and misbehaves, which is the one failure the guard structurally cannot see. ◻ was the wrong marker for a decision already taken. | symbol |
 | ✅ | Transform Parameters | `ts/refactors/change-signature` | TypeScript has no `ref`/`out`, so the C# headline feature has no counterpart — you return a tuple or an object instead. What survives is the general parameter-list edit, plus a TS-native flavor: collapsing a long positional list into a destructured options object and back. | symbol |
-| ◻ | Add/Remove params modifier | `ts/refactors/rest-parameter` | Toggles the last parameter between `f(xs: T[])` and `f(...xs: T[])`, rewriting each call site's argument shape. TS rest parameters type more than C# `params` does — they may be tuples with labeled and optional elements. | symbol |
 | ✅ | Invert Boolean | `ts/refactors/invert-boolean` | Negates a boolean's returns and assignments and every read of it, optionally renaming. Sound only when the checker says the type is exactly `boolean`: truthiness coercion means `!x` is not an inversion for anything wider. | symbol |
 
 ### Members and hierarchy
@@ -130,18 +127,12 @@ Both halves are now closed. `applicableActions` passes `'invoked'`, so the paths
 
 | Status | ReSharper | Tool | In TypeScript | Addr. |
 | --- | --- | --- | --- | --- |
-| ◻ | Convert Abstract Class to Interface | `ts/refactors/class-interface-form` | Drops the runtime shell and rewrites `extends` to `implements` at every subclass. The tool is its guards: an interface has no runtime existence, so `instanceof`, `typeof`, DI registration, `super(…)`, and decorators are all fatal, and interfaces hold no `private`, `static`, or implemented members. | symbol |
-| ◻ | Convert Interface to Abstract Class | `ts/refactors/class-interface-form` | The same tool run backwards. | symbol |
 | ✅ | Convert to scoped enum | `ts/refactors/enum-to-const-object` | TS enum members are already qualified, so the transferable half is the strictness: a numeric `enum` becomes a string enum, or an `as const` object plus a union type — losing the reverse mapping, the numeric assignability, and the runtime object. | symbol |
-| ◻ | Convert Indexer to Method | `ts/refactors/index-access-form` | TS has no indexer *member* — only an index *signature*, which has no body, while `obj[k]` is ordinary dynamic property syntax. The transferable refactor replaces the signature with `get`/`set` methods and rewrites accesses. | symbol |
-| ◻ | Convert Method to Indexer | `ts/refactors/index-access-form` | The reverse: a trivial `get`/`set` pair collapses into an index signature. | symbol |
-| ◻ | Convert to Non-Global Using | `ts/refactors/globals-to-imports` | Replaces reliance on an ambient global with the explicit import each referencing file needs, deleting the `declare global` or converting a `namespace` into a module. | symbol |
 | ✅ | Introduce Namespace Alias | `ts/refactors/module-form` | C#'s `using X = Some.Long.Namespace` aliases a node in a global namespace tree. TypeScript has no such tree — the only thing to alias is a module specifier, and `import * as ns` is a real runtime binding, not a compile-time shorthand. | file |
-| ◻ | Convert Extension Method to Plain Static | `ts/refactors/unpatch-prototype` | The nearest TS construct is a prototype patch plus a declaration-merged interface. This converts it back to a plain function, rewriting `xs.last()` into `last(xs)` and deleting both halves of the patch. | symbol |
 
 ### No TypeScript meaning
 
-Ten entries have no analogue, and the reason is usually a fact about TypeScript worth stating.
+Ten entries have no analogue, and the reason is usually a fact about TypeScript worth stating. Two further sections follow, for entries that *do* have an analogue and still will not be built — the distinction matters, because these three reasons are not the same reason and a future entry will need all three.
 
 | ReSharper | Why not |
 | --- | --- |
@@ -154,6 +145,32 @@ Ten entries have no analogue, and the reason is usually a fact about TypeScript 
 | Extract CSS Style | CSS files are not members of a `ts.Program`. Both of a session's views are structurally unable to see the documents this reads and writes, and no symbol table contains a CSS rule. |
 
 ---
+
+### Real construct, no population
+
+These have a genuine TypeScript meaning. They have no instances. Measured across ~1,050 first-party source files in four real projects (`powerhouse/packages/reactor`, `reactor-api`, `reactor-browser`, `sermon-search`), the constructs they act on number **zero** — and the zero is the finding, because a tool with no targets is not worth building however well it would work. Each was probed before it was cut; the evidence is recorded so a revisit starts from it rather than from the idea's appeal.
+
+| ReSharper | Why not |
+| --- | --- |
+| Convert Abstract Class to Interface | 2 abstract classes in 1,050 files, neither convertible; 6 in the whole monorepo, 1 convertible — and its hand-written `IStorage` already sits directly beneath it. The structural argument outlives the count: `protected` on a type member is `TS1070`, so the only convertible shape is all-public, and an all-public abstract class is *already* structurally identical to the interface it would become. Dropping a `private` or `protected` member does flip overload resolution and conditional types with no diagnostic — but only for shapes that cannot be converted at all. |
+| Convert Interface to Abstract Class | The output is an interface plus dead runtime code until someone writes the bodies the tool cannot invent. `extract-superclass` and `pull-members-up` are that path, and the latter already writes signature-only members when the destination is an interface. |
+| Convert Indexer to Method · Convert Method to Indexer | 13 index signatures in 951 files: 4 are generic constraints with no receiver, 7 are wire/JSON payloads whose plain-object shape *is* the contract, 0 sit on a class, and 9 have no accesses to rewrite. An index signature has no body, so converting one does not move an implementation — it invents one. `JSON.parse(json) as Bag` then compiles clean and throws `b.get is not a function`. |
+| Convert to Non-Global Using | 0 non-ambient `namespace` declarations anywhere. All 6 `declare global` blocks augment genuinely global runtime objects — `Window`, `WindowEventMap`, React's act flag, the YouTube IFrame API — which have no module to import from. Whether a binding is host-injected or module-exported is a runtime fact the checker cannot see. |
+| Convert Extension Method to Plain Static | 0 prototype patches and 0 built-in interface augmentations in 1,062 files; 6 in the entire monorepo, all jsdom `vi.fn()` stubs with no declaration merge and no call sites. Worth recording what the tool would have prevented: unpatching changes `JSON.stringify` of the patched object from `{"name":"Error","message":"boom"}` to `{}`. |
+| Inline Class | 0 of 190 classes satisfy the entry's own preconditions. TypeScript's single-consumer collaborator is an *injected interface implementation* — which is precisely the population the tool must refuse by definition, since the consumer depends on the interface rather than the class. |
+| Introduce typedef · Inline typedef | 0 `.js` files in any `ts.Program` across 13 tsconfigs, `checkJs` in none of them, `@typedef` 0 in the corpora. And the guard would be inert here even if there were: `isSourceFileJS` gates the refactoring on file extension while `checkJs` gates diagnostics, so in the only JS configuration these projects contain, `diagnosticsIntroducedBy` compiles nothing and would bless anything. |
+
+### Real population, no motivated target
+
+Instances exist. Every one of them is correct as written, or the entry's stated justification does not survive being measured. These are the entries where probing changed the answer, which is the whole reason this document probes.
+
+| ReSharper | Why not |
+| --- | --- |
+| Move to Resource (hoist a literal to a shared `const`) | **The stated justification is false, in both directions.** The index claimed `const MSG = 'ok'` keeps the type `'ok'` while the same literal in an object property widens to `string`, silently breaking narrowing. Measured: `{ kind: 'ok' }` and `{ kind: MSG }` both infer `{ kind: string }`, identically. Nothing widens that was not already wide. What remains is dedupe keyed on a string's *value*, which is grep, and [principle 1](docs/plan.md#guiding-principles) excludes it. 510 repeated-literal groups reduce to roughly 8 a reviewer would accept, and 42 of the best candidates are `typeof` operands the tool would have to refuse. |
+| Introduce Variable for Substring | **The premise fails the same way.** TypeScript infers template literal types straight through `const` placeholders: `const verb = 'GE'; const m = \`${verb}T\`` has type `"GET"`, and passing it where `'GET'` is required reports nothing. So the conversion this entry describes loses no type information. 26 real targets in 943 files, all single-file and single-literal — no cross-file knowledge, and `tsc` is a complete oracle for what is left. |
+| Add/Remove params modifier | Its TypeScript-specific justification — rest parameters "may be tuples with labeled and optional elements" — measures **0 tuple-typed and 0 non-last rest parameters in 13,619 callables**. Of 18 syntactic targets, 12 are test helpers and 0 are motivated production changes. |
+| Move Type to Outer Scope | Two halves, both empty. All 16 nested-in-`namespace` declarations are `declare global`/`declare module` augmentations, which lifting *destroys* — they are anti-targets, not targets. Of 24 function-body declarations, 21 capture nothing at all, making the operation a pure text move where the typecheck sees every way it can fail. |
+
 
 ## Shared machinery
 
@@ -205,20 +222,50 @@ Ordered after probing what TypeScript's engine actually does for each candidate,
 - **`ts/refactors/substitution.ts`** — precedence, capture, and purity. Consumed by `inline-function` and every later inline.
 - **An envelope rule**: an empty edit from an action that reported applicable is never reported as success. It is the one failure class the guard is structurally blind to, because there is nothing to typecheck. Whether it is an error or a repair depends on the reason — `change-signature` found TypeScript declining over a JSDoc `{@link}`, which is no reason to refuse, so the tool writes the conversion itself. `tryRefactor` in `refactor-action.ts` is what lets a tool tell "applicable, yet produced nothing" apart from a genuine refusal.
 
-### Round four — what is left
+### Round four, and what closed the index
 
-The member-move family is the largest coherent group remaining, and `move-member` has now built
-most of what it needs: `extract-class`, `extract-superclass`, `extract-interface`,
-`pull-members-up`, `push-members-down`, `move-instance-method`. Then the member-form group
-(`member-form`, `encapsulate-field`, `make-static`, `make-non-static`), which is cheap and was cut
-on value rather than cost — none of them changes a call site in a way the compiler misses.
-`introduce-parameter` is now small, since `selection.ts` and `signatures.ts` both exist.
-`invert-boolean` is the last high-value entry outside those groups.
+Round four built the member-move family — `move-member`, `move-instance-method`,
+`extract-class`, `extract-superclass`, `extract-interface`, `pull-members-up`,
+`push-members-down` — then the member-form group, `introduce-parameter` and
+`invert-boolean`. Round five added `inline-field` and `constructor-to-factory`, and then
+stopped, because the round after it found nothing left to build.
 
-### Deliberately left for later
+**Every remaining entry was probed rather than estimated, and none of them survived.** The
+measurements are in the two retirement sections above. Three of them are worth naming as
+reasons in their own right, because they are not the same reason and a future entry will
+need all three:
 
-- **`move-member` / `move-instance-method`** — the god-*class* analogue of the shipped god-*module* fix, and the strongest thing cut. Wholly our own code, and materially cheaper once `signatures.ts` exists.
-- **`widen-type`** — the guard is a *complete* oracle for it, since "still typechecks" is literally what `diagnosticsIntroducedBy` computes. What defers it is candidate generation, not value.
-- **`extract-class`, `extract-superclass`, `extract-interface`, `pull-members-up`, `push-members-down`** — same member-move engine; build `move-member` first and these become tractable.
-- **`encapsulate-field`, `member-form`, `make-static`** — cheap, and cut on *value*, not cost. None changes a call site in a way the compiler misses, so a model plus `tsc` already does them. Cheapness was never the criterion here.
-- **`introduce-parameter`** — the composition of `extract`'s selection module (now shipped) and `change-signature`'s argument mapper. Cheap once the latter lands.
+1. **Real construct, no population.** It means something in TypeScript; modern TypeScript
+   contains no instances. Prototype patches, non-ambient `namespace` blocks, JSDoc
+   `@typedef` — 0 of each across ~1,050 first-party files.
+2. **Real population, no motivated target.** Instances exist and every one is correct as
+   written, or the entry's justification does not survive measurement. Both string-literal
+   entries died this way, and both of their premises turned out to be *false*: neither
+   hoisting a literal nor converting one to a template loses any type information.
+3. **Already shipped under another name.** Encapsulate Field is `member-form` with
+   `to: "accessor"`.
+
+The lesson worth carrying is about the instrument, not the entries. A `targetCount` is
+**motivated targets surviving the tool's own refusals**, never syntactic candidates —
+`inline-field` shipped correct and accepted 0 of 275 real fields, and every later
+assessment that counted syntax instead of motivation ranked itself roughly backwards.
+Count what a tool would actually accept, before building it.
+
+### What is not done: the territory
+
+The index is closed. The *territory* is not, and the difference is the point.
+
+ReSharper's catalogue is C#'s map of refactoring, drawn before TypeScript existed. It has
+no entry for the failures that are hardest to see here, and this repo has already started
+building past it: `ts/async/floating-promises`, `ts/types/loopholes`, `ts/graph/dead-exports`,
+`ts/comments/*`. Those have no ReSharper counterpart at all, and they fit this document's
+own criterion better than most of the rows above — a floating promise, an `any` laundered
+through a cast, an export nothing imports are all invisible to a typecheck by construction.
+
+Two live defects found in the *shipped* `extract` tool during the same round make the case
+plainly: extracting a `'use client'` directive, or the specifier of `import('./m.js')`,
+both produced clean compiles and wrong code. Neither is an index entry. Both were worth
+more than any row left on the list.
+
+So the next roadmap should not be a translation. It should start from the corpora and ask
+what compiles clean and is wrong.
