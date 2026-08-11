@@ -94,6 +94,27 @@ describe('ts/refactors/member-form to: accessor', () => {
     },
   );
 
+  it('gives a readonly field a getter and no setter', { timeout: 30_000 }, async () => {
+    // The majority shape in real code: 132 of 186 eligible public
+    // fields across four corpora are `readonly`. A setter here would be
+    // a widening the annotation does not describe.
+    const result = await memberForm.run(session, { symbol: 'code', to: 'accessor' });
+
+    expect(result.newDiagnostics).toEqual([]);
+    const edges = await preview(result.edit, path.join(FIXTURE, 'src/edges.ts'));
+    expect(edges).toContain(
+      '  private readonly _code: string;\n' +
+        '  public get code(): string {\n' +
+        '    return this._code;\n' +
+        '  }\n',
+    );
+    expect(edges).not.toContain('set code(');
+    // The constructor assigned the field, so it now assigns the backing
+    // one — a `readonly` accessor pair could not be written otherwise.
+    expect(edges).toContain('    this._code = code;');
+    expect(result.warnings.join('\n')).toContain('own property');
+  });
+
   it('says so when the generator renames the accessor out from under an underscore', async () => {
     const result = await memberForm.run(session, { symbol: '_serial', to: 'accessor' });
 
