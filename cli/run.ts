@@ -22,6 +22,7 @@ const USAGE = [
   'Commands: check <suite>   run a suite of tools over one session (what a hook runs)',
   '          baseline        record what a suite reports now, to gate on what comes after',
   '          ratchet         tighten the gates as far as the project already allows',
+  '          todo            what the baseline is hiding, as a work queue',
   '          install         write the git and Claude Code hooks, and the default suites',
 ];
 
@@ -34,6 +35,7 @@ const COMMANDS: Record<string, (argv: string[], io: CliIo) => Promise<number>> =
   check: async (argv, io) => (await import('./check.js')).runCheck(argv, io),
   baseline: async (argv, io) => (await import('./check.js')).runBaselineCommand(argv, io),
   ratchet: async (argv, io) => (await import('./ratchet.js')).runRatchet(argv, io),
+  todo: async (argv, io) => (await import('./todo.js')).runTodo(argv, io),
   install: async (argv, io) => (await import('./install.js')).runInstall(argv, io),
   help: (argv, io) => runCli(argv.length > 0 ? [...argv, '--help'] : ['--help'], io),
 };

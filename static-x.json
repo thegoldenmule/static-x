@@ -1,5 +1,17 @@
 {
   "checks": {
+    "claude": {
+      "novelty": "changed-file",
+      "tools": {
+        "ts/async/floating-promises": "block",
+        "ts/types/loopholes": {
+          "level": "block",
+          "minSeverity": "warning"
+        },
+        "ts/comments/llm-tells": "warn",
+        "ts/comments/long": "warn"
+      }
+    },
     "commit": {
       "novelty": "changed-lines",
       "tools": {
@@ -27,17 +39,17 @@
           "minSeverity": "warning"
         }
       }
-    },
-    "claude": {
-      "novelty": "changed-file",
-      "tools": {
-        "ts/async/floating-promises": "block",
-        "ts/types/loopholes": {
-          "level": "block",
-          "minSeverity": "warning"
-        },
-        "ts/comments/llm-tells": "warn",
-        "ts/comments/long": "warn"
+    }
+  },
+  "ts": {
+    "comments": {
+      "stale-refs": {
+        "ignore": [
+          "createArrayTypeNode",
+          "createUnionTypeNode",
+          "parenthesizeConstituentTypesOfUnionType",
+          "parenthesizeNonArrayTypeOfPostfixType"
+        ]
       }
     }
   }

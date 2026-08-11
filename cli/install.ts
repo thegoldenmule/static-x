@@ -135,6 +135,40 @@ async function gitChanges(root: string, force: boolean, io: CliIo): Promise<Chan
   return changes;
 }
 
+/**
+ * The backlog skill, copied from this package rather than generated, so
+ * the prompt an agent follows is a reviewable file with a history rather
+ * than a string literal in a TypeScript source.
+ */
+async function skillChanges(root: string): Promise<Change[]> {
+  const source = path.resolve(import.meta.dirname, '../.claude/skills/static-x-backlog/SKILL.md');
+  let text: string;
+  try {
+    text = await readFile(source, 'utf8');
+  } catch {
+    return [];
+  }
+  const file = path.join(root, '.claude/skills/static-x-backlog/SKILL.md');
+  if (path.resolve(file) === path.resolve(source)) return [];
+  let existing: string | undefined;
+  try {
+    existing = await readFile(file, 'utf8');
+  } catch {
+    existing = undefined;
+  }
+  if (existing === text) return [];
+  return [
+    {
+      file,
+      note: existing === undefined ? 'create' : 'update',
+      write: async () => {
+        await mkdir(path.dirname(file), { recursive: true });
+        await writeFile(file, text, 'utf8');
+      },
+    },
+  ];
+}
+
 async function claudeChanges(root: string): Promise<Change[]> {
   const file = path.join(root, '.claude/settings.json');
   const settings = (await readJson(file)) ?? {};
@@ -142,7 +176,7 @@ async function claudeChanges(root: string): Promise<Change[]> {
   const postToolUse = Array.isArray(hooks['PostToolUse']) ? [...(hooks['PostToolUse'] as unknown[])] : [];
 
   const already = JSON.stringify(postToolUse).includes(CLAUDE_MARKER);
-  if (already) return [];
+  if (already) return [...(await skillChanges(root))];
 
   postToolUse.push({
     matcher: 'Edit|Write',
@@ -165,6 +199,7 @@ async function claudeChanges(root: string): Promise<Change[]> {
         await writeFile(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
       },
     },
+    ...(await skillChanges(root)),
   ];
 }
 

@@ -1,6 +1,53 @@
 import type { CheckSuite } from '../core/checks/index.js';
 
 /**
+ * Finding codes an agent may work through unattended.
+ *
+ * The test is not "is this finding true" — they are all true. It is
+ * "does the finding imply an edit whose correctness something other than
+ * the agent's judgment can confirm". A green typecheck and a green test
+ * suite are the only witnesses available, so a code earns its place here
+ * only when those two would actually catch a bad fix.
+ *
+ *   async.floating-promise  The fix is `await`, `void`, or `.catch`. Local,
+ *                           and the checker verifies the result.
+ *   comment.stale-ref       The comment names something that does not exist.
+ *   comment.stale-param     A @param for a parameter that is not there.
+ *                           Both are prose: wrong prose is the defect, and
+ *                           no edit to prose can change behavior.
+ *   dupes.function          A genuine duplicate, and extracting the shared
+ *                           implementation is a real win. The most work of
+ *                           the four, and the one to watch.
+ *
+ * Everything else is deliberately absent, and the reasons differ:
+ *
+ *   graph.dead-export       The mechanical fix is deletion, and the tool
+ *   graph.dead-file         says in its own message that it cannot see
+ *                           whether something outside the project imports
+ *                           it. On a library that is API removal, and no
+ *                           test suite here would notice.
+ *   comment.long            The threshold is taste. An agent shortening
+ *   comment.llm-tell        every comment to satisfy a number makes the
+ *                           code worse, and an LLM scrubbing its own tells
+ *                           is circular.
+ *   graph.cycle             The fix is a design decision about where the
+ *                           shared thing should live.
+ *   types.assertion         Removing an escape hatch means proving the
+ *   types.non-null          type, which usually means restructuring — and
+ *   types.directive         the cheap "fix" is to make the symptom go away
+ *                           while the hole stays.
+ *
+ * A project that disagrees can say so: `todo.codes` in static-x.json
+ * replaces this list outright.
+ */
+export const TS_FIXABLE_CODES: ReadonlySet<string> = new Set([
+  'async.floating-promise',
+  'comment.stale-ref',
+  'comment.stale-param',
+  'dupes.function',
+]);
+
+/**
  * The suites a TypeScript project gets without writing any config, and
  * the ones `static-x install` materializes into static-x.json so they
  * can be edited.

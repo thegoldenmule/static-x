@@ -34,6 +34,10 @@ export {
   type Dispatcher,
   type ToolOutcome,
 } from './run.js';
+// TodoInput and TodoItem stay inside todo.ts: one is planTodo's own
+// parameter shape and the other is reached through TodoList, so
+// re-exporting them here only widened the surface.
+export { planTodo, type TodoList } from './todo.js';
 export {
   isEmptyPlan,
   planRatchet,

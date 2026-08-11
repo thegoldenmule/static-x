@@ -61,6 +61,15 @@ describe('static-x install', () => {
     });
   });
 
+  it('ships the backlog skill, so the agent loop arrives with the tool', async () => {
+    const root = await project('husky');
+    await runCli(['install', '--project', root, '--target', 'claude'], capture(root).io);
+    const skill = await read(root, '.claude/skills/static-x-backlog/SKILL.md');
+    expect(skill).toMatch(/^---\nname: static-x-backlog/);
+    // The rule that keeps a regression out of the record.
+    expect(skill).toMatch(/Never run `static-x baseline` during the loop/);
+  });
+
   it('writes executable hooks into .git/hooks when husky is absent', async () => {
     const root = await project('git');
     expect(await runCli(['install', '--project', root, '--target', 'git'], capture(root).io)).toBe(0);
