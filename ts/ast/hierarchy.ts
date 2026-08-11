@@ -159,9 +159,18 @@ export function memberHierarchy(
   }
 
   // Downward: anything whose transitive heritage reaches this container.
+  //
+  // A candidate's own unresolvable heritage is only this member's
+  // problem when that candidate declares the member — otherwise a
+  // single mixin anywhere in the project would report every member in
+  // it as un-analyzable, which is what happened before this narrowing:
+  // one `class Timer implements Mixin(Base)` made every unrelated
+  // static unmovable.
   const subtypes: MemberDeclaration[] = [];
   for (const candidate of all) {
     if (candidate.node === container) continue;
+    const declaration = memberNamed(candidate.node, name);
+    const candidateUnresolved: string[] = [];
     const seenDown = new Set<Container>();
     const pending: Container[] = [candidate.node];
     let reaches = false;
@@ -169,16 +178,17 @@ export function memberHierarchy(
       const current: Container = pending.pop()!;
       if (seenDown.has(current)) continue;
       seenDown.add(current);
-      for (const parent of heritageOf(current, checker, unresolved)) {
+      for (const parent of heritageOf(current, checker, candidateUnresolved)) {
         if (parent === container) reaches = true;
         pending.push(parent);
       }
     }
-    if (!reaches) continue;
-    const declaration = memberNamed(candidate.node, name);
-    if (declaration) {
-      subtypes.push(describe(candidate.node, declaration, candidate.sourceFile));
-    }
+    // Report unfollowable edges only where they could hide a
+    // declaration of this member: either the candidate reaches us, or
+    // it declares the name and might have.
+    if (reaches || declaration) unresolved.push(...candidateUnresolved);
+    if (!reaches || !declaration) continue;
+    subtypes.push(describe(candidate.node, declaration, candidate.sourceFile));
   }
 
   return { supertypes, subtypes, unresolved: [...new Set(unresolved)] };

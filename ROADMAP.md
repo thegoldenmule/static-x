@@ -2,7 +2,7 @@
 
 [ReSharper's refactoring index](https://www.jetbrains.com/help/resharper/Refactorings__Index.html) is the most complete catalogue of code transformations any tool ships — 61 named refactorings, accumulated over twenty years of watching people rewrite C#. This document translates every one of them into TypeScript and into this repo's tool contract, so the set of refactorings static-x should own is a decision already made rather than one taken a tool at a time.
 
-The 61 entries collapse to **39 TypeScript tools**; **10 have no TypeScript meaning at all**, and saying precisely why is part of the translation. Nine are shipped, covering twelve index entries — [`rename`](ts/refactors/rename/README.md), [the first five](#the-first-five--shipped), [`extract`](ts/refactors/extract/README.md) and [`extract-type`](ts/refactors/extract-type/README.md), which retire three and two entries respectively, and [`change-signature`](ts/refactors/change-signature/README.md).
+The 61 entries collapse to **39 TypeScript tools**; **10 have no TypeScript meaning at all**, and saying precisely why is part of the translation. **Sixteen are shipped, covering nineteen index entries** — see the ✅ rows below.
 
 ## Translating a refactoring
 
@@ -67,7 +67,7 @@ Both halves are now closed. `applicableActions` passes `'invoked'`, so the paths
 | ✅ | Move Type to Another File | `ts/refactors/move-symbol` | Moves a top-level declaration into another file, existing or created, exporting it if needed and rewriting every importer's specifier. TS files hold many declarations with no name/file correspondence rule, so this is the god-module fix. | symbol |
 | ✅ | Move Type to Another Namespace/Module | `ts/refactors/move-symbol` | Not a distinct operation: a TypeScript module *is* a file, and a type's "namespace" is exactly the specifier importers write. Changing it means moving the declaration — the same tool. | symbol |
 | ✅ | Move to Folder | `ts/refactors/move-file` | Moves a file and rewrites every specifier that resolves to it, plus the moved file's own relative specifiers. C# links folder and namespace only by convention; TypeScript makes the path part of the module's identity. | file |
-| ◻ | Move to Another Type | `ts/refactors/move-member` | Moves a static member or module-level binding to another container. The idiomatic TS destination is usually a plain exported function — modules already provide the namespacing C# needs static classes for, and free functions tree-shake. | symbol |
+| ✅ | Move to Another Type | `ts/refactors/move-member` | Moves a static member or module-level binding to another container. The idiomatic TS destination is usually a plain exported function — modules already provide the namespacing C# needs static classes for, and free functions tree-shake. | symbol |
 | ◻ | Move Instance Method | `ts/refactors/move-instance-method` | Feature-envy surgery: moves a method onto the class of one of its parameters, flipping the receiver so `a.m(b, c)` becomes `b.m(a, c)`. Ports unchanged — TS classes carry state and prototype methods exactly as C# types do. | symbol |
 | ◻ | Move Type to Outer Scope | `ts/refactors/move-to-outer-scope` | Lifts a declaration nested in a function body or `namespace` block out to module scope. TS nesting is *lexical*, not the C# nested-type kind, so the inner declaration may close over the outer scope's variables and type parameters — that capture is the hard part. | symbol |
 | ◻ | Copy type | `ts/refactors/copy-type` | Duplicates a class, interface, alias, or enum into another file under a new name, rewriting self-references and adding the imports the copy needs, leaving existing references on the original. | symbol |
@@ -94,9 +94,9 @@ Both halves are now closed. `applicableActions` passes `'invoked'`, so the paths
 | Status | ReSharper | Tool | In TypeScript | Addr. |
 | --- | --- | --- | --- | --- |
 | ✅ | Inline Parameter | `ts/refactors/inline-parameter` | When every call site passes the same value, drops the parameter from the signature and every call and introduces the value in the body. Also covers the TS shape where a defaulted parameter is never overridden. | symbol |
-| ◻ | Inline Variable | `ts/refactors/inline-variable` | Replaces every read of a `const` with its initializer. The one entry TypeScript already implements outright, as `refactor.inline.variable`. | symbol |
+| ✅ | Inline Variable | `ts/refactors/inline-variable` | Replaces every read of a `const` with its initializer. The one entry TypeScript already implements outright, as `refactor.inline.variable`. | symbol |
 | ✅ | Inline Method | `ts/refactors/inline-function` | Substitutes a function's body at its call sites and deletes it. Applies to all three TS callable forms; needs a precedence-aware expression printer the repo doesn't have yet, and re-evaluates side effects when an impure argument appears twice. | symbol |
-| ◻ | Inline type alias | `ts/refactors/inline-type-alias` | Substitutes an alias's right-hand side at every use — `type Id = string \| number` used as `Id[]` becomes `(string \| number)[]`. C# inlines a `using X = …` directive; TS aliases are generic, conditional, and mapped, so the TS form does strictly more. | symbol |
+| ✅ | Inline type alias | `ts/refactors/inline-type-alias` | Substitutes an alias's right-hand side at every use — `type Id = string \| number` used as `Id[]` becomes `(string \| number)[]`. C# inlines a `using X = …` directive; TS aliases are generic, conditional, and mapped, so the TS form does strictly more. | symbol |
 | ◻ | Inline typedef | `ts/refactors/inline-type-alias` | The same operation over the JSDoc declaration form. TypeScript has no `typedef` keyword. | symbol |
 | ◻ | Inline Field | `ts/refactors/inline-field` | Replaces reads of a never-reassigned class property with its initializer. Splits from the local-variable case, which TypeScript already covers. | symbol |
 | ◻ | Inline Class | `ts/refactors/inline-class` | Folds a single-consumer class back into its consumer, rewriting `this.helper.m()` to `this.m()`. | symbol |
@@ -124,7 +124,7 @@ Both halves are now closed. `applicableActions` passes `'invoked'`, so the paths
 | ◻ | Pull Members Up | `ts/refactors/pull-members-up` | Moves members into a base class, or pulls up only the signature when the target is an interface, since TS interfaces hold no implementations. | symbol |
 | ◻ | Push Members Down | `ts/refactors/push-members-down` | The mirror. The subclass set isn't knowable from the base: `ts.Program` has no reverse-inheritance index, so the tool must scan heritage clauses project-wide and resolve each `extends` through the checker. | symbol |
 | ◻ | Replace Constructor with Factory Method | `ts/refactors/constructor-to-factory` | Makes the constructor `private` and introduces a factory, rewriting every `new Class(…)`. The TS motivation is stronger than C#'s: constructors cannot be `async`, so factories are how you build objects that need to await. | symbol |
-| ◻ | Use Base Type Where Possible | `ts/refactors/widen-type` | Replaces an annotation with the least specific type that still typechecks everywhere. Structural typing makes the TS version strictly more powerful: the candidate isn't limited to declared ancestors — any structural supertype qualifies, including one synthesized from exactly the members the code touches. | symbol |
+| ✅ | Use Base Type Where Possible | `ts/refactors/widen-type` | Replaces an annotation with the least specific type that still typechecks everywhere. Structural typing makes the TS version strictly more powerful: the candidate isn't limited to declared ancestors — any structural supertype qualifies, including one synthesized from exactly the members the code touches. | symbol |
 
 ### Declaration form
 
@@ -132,7 +132,7 @@ Both halves are now closed. `applicableActions` passes `'invoked'`, so the paths
 | --- | --- | --- | --- | --- |
 | ◻ | Convert Abstract Class to Interface | `ts/refactors/class-interface-form` | Drops the runtime shell and rewrites `extends` to `implements` at every subclass. The tool is its guards: an interface has no runtime existence, so `instanceof`, `typeof`, DI registration, `super(…)`, and decorators are all fatal, and interfaces hold no `private`, `static`, or implemented members. | symbol |
 | ◻ | Convert Interface to Abstract Class | `ts/refactors/class-interface-form` | The same tool run backwards. | symbol |
-| ◻ | Convert to scoped enum | `ts/refactors/enum-to-const-object` | TS enum members are already qualified, so the transferable half is the strictness: a numeric `enum` becomes a string enum, or an `as const` object plus a union type — losing the reverse mapping, the numeric assignability, and the runtime object. | symbol |
+| ✅ | Convert to scoped enum | `ts/refactors/enum-to-const-object` | TS enum members are already qualified, so the transferable half is the strictness: a numeric `enum` becomes a string enum, or an `as const` object plus a union type — losing the reverse mapping, the numeric assignability, and the runtime object. | symbol |
 | ◻ | Convert Indexer to Method | `ts/refactors/index-access-form` | TS has no indexer *member* — only an index *signature*, which has no body, while `obj[k]` is ordinary dynamic property syntax. The transferable refactor replaces the signature with `get`/`set` methods and rewrites accesses. | symbol |
 | ◻ | Convert Method to Indexer | `ts/refactors/index-access-form` | The reverse: a trivial `get`/`set` pair collapses into an index signature. | symbol |
 | ◻ | Convert to Non-Global Using | `ts/refactors/globals-to-imports` | Replaces reliance on an ambient global with the explicit import each referencing file needs, deleting the `declare global` or converting a `namespace` into a module. | symbol |
@@ -202,6 +202,16 @@ Ordered after probing what TypeScript's engine actually does for each candidate,
 - ~~`ts/refactors/signatures.ts`~~ — **shipped** with `change-signature`. The escape/spread-call gate and the `getResolvedSignature` argument mapper, lifted out of `inline-parameter`; `introduce-parameter` and `rest-parameter` consume it next.
 - **`ts/refactors/substitution.ts`** — precedence, capture, and purity. Consumed by `inline-function` and every later inline.
 - **An envelope rule**: an empty edit from an action that reported applicable is never reported as success. It is the one failure class the guard is structurally blind to, because there is nothing to typecheck. Whether it is an error or a repair depends on the reason — `change-signature` found TypeScript declining over a JSDoc `{@link}`, which is no reason to refuse, so the tool writes the conversion itself. `tryRefactor` in `refactor-action.ts` is what lets a tool tell "applicable, yet produced nothing" apart from a genuine refusal.
+
+### Round four — what is left
+
+The member-move family is the largest coherent group remaining, and `move-member` has now built
+most of what it needs: `extract-class`, `extract-superclass`, `extract-interface`,
+`pull-members-up`, `push-members-down`, `move-instance-method`. Then the member-form group
+(`member-form`, `encapsulate-field`, `make-static`, `make-non-static`), which is cheap and was cut
+on value rather than cost — none of them changes a call site in a way the compiler misses.
+`introduce-parameter` is now small, since `selection.ts` and `signatures.ts` both exist.
+`invert-boolean` is the last high-value entry outside those groups.
 
 ### Deliberately left for later
 
