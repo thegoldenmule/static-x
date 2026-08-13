@@ -2,3 +2,10 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# Godot's per-project import cache. Regenerated whenever the editor binds
+# a project, including every time a gd tool starts a language server
+# against fixtures/basic-gd. The .gd.uid files beside it are not cache —
+# they are a script's stable identity, referenced by uid:// from scenes,
+# so those stay committed.
+.godot/

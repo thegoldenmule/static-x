@@ -1,0 +1,19 @@
+; Engine configuration file.
+; Deliberately minimal: enough for the editor to bind a project and start
+; the language server, and no more. Fixtures may hold broken code on
+; purpose — see warnings.gd and main.gd.
+
+config_version=5
+
+[application]
+
+config/name="static-x basic-gd fixture"
+config/features=PackedStringArray("4.4", "GL Compatibility")
+
+[autoload]
+
+GameState="*res://scripts/game_state.gd"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
