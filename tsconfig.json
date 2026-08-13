@@ -12,6 +12,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["core", "ts", "cli", "mcp", "hooks"],
+  "include": ["core", "ts", "gd", "cli", "mcp", "hooks"],
   "exclude": ["fixtures", "node_modules"]
 }

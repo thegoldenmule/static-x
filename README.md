@@ -5,10 +5,12 @@ Source-code tools for LLMs, built on language servers and static analysis instea
 Each language has its own directory containing the machinery to run its language server, bind to a project on disk, and ferry tool calls, plus the tools themselves.
 
 - **[TypeScript tools](ts/README.md)** — the available tools and what they do
+- **[GDScript pack](gd/README.md)** — investigated, scaffolded, nothing shipped yet
 - **[MCP server](mcp/README.md)** — expose the tools to Claude Code and other MCP clients
 - **[Hooks](hooks/README.md)** — `static-x install`: gate commits, pushes, and Claude's edits on the tools
 - **[Project plan](docs/plan.md)** — architecture, tool contracts, and milestones
 - **[Refactoring roadmap](ROADMAP.md)** — ReSharper's whole refactoring index, translated to TypeScript
+- **[GDScript roadmap](docs/gdscript-roadmap.md)** — what Godot's language server does and does not give a second pack
 
 ## Install
 
