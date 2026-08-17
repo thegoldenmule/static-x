@@ -1,0 +1,16 @@
+{
+  "ts": {
+    "comments": {
+      "long": { "input": { "maxChars": 4000 } }
+    }
+  },
+  "checks": {
+    "claude-comments": {
+      "novelty": "changed-lines",
+      "tools": {
+        "ts/comments/long": { "level": "block", "input": { "maxLines": 2 } },
+        "ts/comments/llm-tells": "warn"
+      }
+    }
+  }
+}

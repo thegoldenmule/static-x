@@ -160,7 +160,7 @@ Two things worth weighing before turning the Claude hook on. It runs on **every*
 
 ## Doing it by hand
 
-The files here are exactly what the installer writes, asserted by [`hooks.test.ts`](hooks.test.ts) so the two cannot drift:
+These three files are exactly what the installer writes, asserted by [`hooks.test.ts`](hooks.test.ts) so the two cannot drift:
 
 | File | Event |
 | --- | --- |
@@ -169,3 +169,43 @@ The files here are exactly what the installer writes, asserted by [`hooks.test.t
 | [`claude/settings.example.json`](claude/settings.example.json) | the `.claude/settings.json` block |
 
 Both git hooks read the working tree, not the index, so a partially staged file is judged by what is on disk while being *attributed* by what was staged. Wrap the checks in `git stash push --keep-index` / `git stash pop` if that matters; the installer does not, because a working-tree rewrite on every commit fails badly when interrupted.
+
+## One gate for every project: [`claude/ts-comments.mts`](claude/ts-comments.mts)
+
+The installer registers a hook in the *project's* `.claude/settings.json`, one per repository. Registered in `~/.claude/settings.json` instead, a hook fires in every project — and `check <suite>` cannot serve that, for two reasons that both point the same way. A suite's levels live in the analyzed project's `static-x.json`, so one global command enforces whatever each repo happens to say, or the defaults where no file exists. And `--project` at a monorepo root loads no files at all: `ts/comments/long --project .` against a 53-package workspace reports nothing in 0.4s, while the same tool at `--project packages/reactor` reports 59 findings.
+
+This example is a comment gate that resolves those two separately. Findings come from the **nearest ancestor `tsconfig.json`** — the unit a session can actually load. Policy comes from `static-x.json` in **`CLAUDE_PROJECT_DIR`**, so one file at a repo root configures the gate for every package under it:
+
+```json
+{
+  "ts": { "comments": { "long": { "input": { "maxChars": 1200 } } } },
+  "checks": {
+    "claude-comments": {
+      "novelty": "changed-lines",
+      "tools": {
+        "ts/comments/long": { "level": "block", "input": { "maxLines": 2 } },
+        "ts/comments/llm-tells": "warn"
+      }
+    }
+  }
+}
+```
+
+The suite is the one this file already documents: `block`, `warn`, `off`, a `novelty`, and the tuning keys layered over `ts.comments.*`. Naming no suite blocks both tools at `changed-lines`; naming a tool the gate does not run is an error rather than a silent no-op. `warn` returns its findings as `hookSpecificOutput.additionalContext`, which reaches the model without rejecting the edit. `baseline` is a novelty a `PostToolUse` event cannot supply inputs for, so it degrades to the whole file and says so.
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": "node ~/.claude/hooks/ts-comments.mts", "timeout": 90 }]
+      }
+    ]
+  }
+}
+```
+
+Copy it there and it runs unbuilt: Node strips the types from `.mts` without a loader (22.18 and 23.6 up), and a copy outside a package has no `type: module` to inherit, which is what the extension settles. `STATIC_X_BIN` points it at a checkout instead of a global install. Two processes run concurrently, so the wall clock is one project load, not two — 1.7s in the largest package of that 53-package workspace.
+
+Three differences from a `check`-based hook are worth knowing before copying it. It pays project load per tool rather than once, which is the price of not going through a suite. Its novelty filter is its own `git diff -U0 HEAD`, so an untracked file is judged whole and a working tree without git degrades to the whole file. And every failure it has — unreadable config, a missing binary, a tool that will not run — exits 0 with a `systemMessage` naming the reason, because static-x's own "could not run" is exit 2, which is Claude's "block".
