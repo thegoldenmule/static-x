@@ -27,6 +27,8 @@ describe('MCP adapter', () => {
   it('lists every registered tool with projectRoot added to its schema', async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'swift_comments_llm-tells',
+      'swift_comments_long',
       'ts_async_floating-promises',
       'ts_comments_llm-tells',
       'ts_comments_long',

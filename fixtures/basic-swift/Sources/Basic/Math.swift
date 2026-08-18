@@ -27,3 +27,18 @@ public func total(_ values: [Int]) -> Int {
     // Return the total count
     return totalCount
 }
+
+/// The A/B for the one rule that had to change in the port. The body
+/// below is identical to total() above, except that the comment on the
+/// return is a /// doc comment rather than a // one. In TypeScript the
+/// distinction is free, because a doc comment there is /** */ and so a
+/// block; in Swift both are line comments and only the doc flag
+/// separates them. total() must report narration and this must not.
+public func totalDocumented(_ values: [Int]) -> Int {
+    var totalCount = 0
+    for value in values {
+        totalCount += value
+    }
+    /// Return the total count
+    return totalCount
+}

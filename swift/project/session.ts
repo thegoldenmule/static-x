@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { LspClient } from '../../core/lsp/index.js';
 import type { FileScope } from '../../core/files/index.js';
 import type { ProjectSession } from '../../core/tool/index.js';
-import { startSwiftServer } from '../server/spawn.js';
+import { startSwiftServer, type SwiftServer } from '../server/spawn.js';
 import { findSwiftProject, type SwiftBinding } from './binding.js';
 
 /**
@@ -58,7 +58,7 @@ export class SwiftProjectSession implements ProjectSession {
   readonly language = 'swift';
   readonly rootPath: string;
   readonly binding: SwiftBinding;
-  #lsp: Promise<LspClient> | undefined;
+  #server: Promise<SwiftServer> | undefined;
   #scope: FileScope | undefined;
 
   private constructor(rootPath: string, binding: SwiftBinding) {
@@ -88,9 +88,13 @@ export class SwiftProjectSession implements ProjectSession {
     return path.join(os.tmpdir(), 'static-x-swift', key);
   }
 
-  lsp(): Promise<LspClient> {
-    this.#lsp ??= startSwiftServer(this.rootPath, { scratchPath: this.scratchPath });
-    return this.#lsp;
+  server(): Promise<SwiftServer> {
+    this.#server ??= startSwiftServer(this.rootPath, { scratchPath: this.scratchPath });
+    return this.#server;
+  }
+
+  async lsp(): Promise<LspClient> {
+    return (await this.server()).client;
   }
 
   /** Every .swift under the root, vendored directories included. */
@@ -130,8 +134,8 @@ export class SwiftProjectSession implements ProjectSession {
   }
 
   async dispose(): Promise<void> {
-    const lsp = this.#lsp;
-    this.#lsp = undefined;
-    if (lsp) await (await lsp).shutdown();
+    const server = this.#server;
+    this.#server = undefined;
+    if (server) await (await server).client.shutdown();
   }
 }

@@ -54,6 +54,12 @@ export function findLongComments(
         maxLines,
         maxChars,
         kind: block.kind,
+        // Doc blocks are held to the same threshold as any other — a
+        // ten-line doc comment is exactly the thing that goes stale —
+        // but they are the majority of findings in a documented
+        // codebase, so the flag lets a project filter them without the
+        // tool growing a second threshold.
+        doc: block.doc,
       },
     });
   }

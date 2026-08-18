@@ -77,13 +77,24 @@ export interface SwiftServerOptions {
   scratchPath?: string | undefined;
 }
 
+export interface SwiftServer {
+  client: LspClient;
+  /**
+   * The legend the server answered with, not the one we asked for.
+   * Token types arrive as indexes into it, so decoding against our own
+   * list would mislabel every token if the two ever diverge.
+   */
+  legend: { tokenTypes: string[]; tokenModifiers: string[] };
+}
+
 /** Spawn sourcekit-lsp and complete the handshake. */
 export async function startSwiftServer(
   rootPath: string,
   options: SwiftServerOptions = {},
-): Promise<LspClient> {
+): Promise<SwiftServer> {
   const serverPath = findSourcekitLsp(options.serverPath);
   const client = new LspClient(spawnSwiftServer(serverPath, options.scratchPath));
+  let legend: { tokenTypes: string[]; tokenModifiers: string[] };
   try {
     const result = await client.initialize(rootPath, SWIFT_CAPABILITIES);
     // Only what the shipped tools consume. Asserting a capability no
@@ -96,6 +107,13 @@ export async function startSwiftServer(
     if (missing.length > 0) {
       throw new Error(`server is missing required capabilities (${missing.join(', ')})`);
     }
+    const provider = caps['semanticTokensProvider'] as
+      | { legend?: { tokenTypes?: string[]; tokenModifiers?: string[] } }
+      | undefined;
+    legend = {
+      tokenTypes: provider?.legend?.tokenTypes ?? TOKEN_TYPES,
+      tokenModifiers: provider?.legend?.tokenModifiers ?? TOKEN_MODIFIERS,
+    };
   } catch (error) {
     await client.shutdown();
     const stderr = client.serverStderr.trim();
@@ -105,5 +123,5 @@ export async function startSwiftServer(
       { cause: error },
     );
   }
-  return client;
+  return { client, legend };
 }
