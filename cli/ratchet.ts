@@ -2,9 +2,11 @@ import { rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import {
+  activeTools,
   baselinePath,
   isEmptyPlan,
   loadBaseline,
+  narrowSuite,
   planRatchet,
   resolveSuite,
   runSuite,
@@ -167,8 +169,17 @@ export async function runRatchet(argv: string[], io: CliIo): Promise<number> {
 
   try {
     const baseline = await loadBaseline(root);
+    const binding = new Set(router.bindingPacks(root).map((pack) => pack.id));
     for (const suiteName of names) {
-      const suite = resolveSuite(suiteName, config, defaults, registry);
+      // Two suites, deliberately. `resolved` is what this project's
+      // static-x.json says, and is what gets written back; `suite` is
+      // what can actually run here. Serializing the narrowed one would
+      // silently delete every other pack's entries from the file.
+      const resolved = resolveSuite(suiteName, config, defaults, registry);
+      const suite = narrowSuite(resolved, (name) =>
+        binding.has(name.split('/')[0] ?? ''),
+      ).suite;
+      if (activeTools(suite).length === 0) continue;
       // Unfiltered, whole project: the only view a ratchet can reason
       // from. One commit's worth of evidence is not grounds to tighten.
       const report = await runSuite({ suite, rootPath: root, dispatcher: ferry });
@@ -182,7 +193,7 @@ export async function runRatchet(argv: string[], io: CliIo): Promise<number> {
       });
       plans.push(plan);
       if (plan.blocked === undefined && !isEmptyPlan(plan)) {
-        tightenedSuites.set(suiteName, tightened(suite, plan));
+        tightenedSuites.set(suiteName, tightened(resolved, plan));
         if (plan.retireBaseline) retire = true;
       }
       if (plan.delta && plan.delta.regressed.length === 0 && apply && plan.delta.resolved.length > 0) {
