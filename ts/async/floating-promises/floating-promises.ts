@@ -2,7 +2,7 @@ import ts from 'typescript';
 import type { Finding, Severity, Tool } from '../../../core/tool/index.js';
 import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
 import { unwrapParens } from '../../ast/expressions.js';
-import { truncateFlat } from '../../ast/truncate.js';
+import { truncateFlat } from '../../../core/text/index.js';
 import type { TsProjectSession } from '../../project/index.js';
 import { isTestFile } from '../../project/index.js';
 
