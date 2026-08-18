@@ -148,6 +148,22 @@ describe('static-x check', () => {
       expect(await runCli(['check', 'gate', '--from', 'claude', '--project', FIXTURE], garbage.io)).toBe(0);
     });
 
+    // The filter is the union across packs rather than one pack's
+    // extension list. Hardcoded to TypeScript's, a hook installed on a
+    // project in any other language would look installed and silently
+    // do nothing.
+    it('decides what counts as source from the packs, not a fixed list', async () => {
+      const { PackRouter } = await import('../core/pack/index.js');
+      const { createPacks } = await import('../packs/index.js');
+      const extensions = new PackRouter(createPacks()).sourceExtensions();
+      for (const pack of createPacks()) {
+        for (const extension of pack.sourceExtensions) {
+          expect(extensions.has(extension)).toBe(true);
+        }
+      }
+      expect(extensions.has('.md')).toBe(false);
+    });
+
     it('never wedges the session: a broken configuration exits 0', async () => {
       // Static-x's own "could not run" is exit 2, which is Claude's
       // "block" — so under this source every failure has to become 0.

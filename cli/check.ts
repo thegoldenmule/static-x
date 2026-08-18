@@ -58,7 +58,6 @@ export const BASELINE_USAGE = [
 type ChangeSource = 'auto' | 'git-staged' | 'git-branch' | 'claude' | 'project';
 
 const SOURCES = new Set<string>(['auto', 'git-staged', 'git-branch', 'claude', 'project']);
-const SOURCE_FILE = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
 interface ClaudeEvent {
   cwd?: string;
@@ -78,9 +77,15 @@ async function readStdin(io: CliIo): Promise<string> {
  * the model just wrote. Whole-file rather than line-scoped on purpose —
  * a model that rewrites a file wholesale leaves hunks that say nothing
  * useful about which lines are its own.
+ *
+ * Which files are worth waking up for is the union across packs, not
+ * one pack's answer: this decides whether to run at all, and a hook
+ * that skipped every file some other pack owns would look installed
+ * and do nothing.
  */
 async function claudeChanges(
   io: CliIo,
+  sourceExtensions: ReadonlySet<string>,
 ): Promise<{ changes?: ChangeSet; project?: string; skip: boolean }> {
   let event: ClaudeEvent | undefined;
   try {
@@ -89,7 +94,9 @@ async function claudeChanges(
     return { skip: true };
   }
   const file = event.tool_input?.file_path;
-  if (typeof file !== 'string' || !SOURCE_FILE.test(file)) return { skip: true };
+  if (typeof file !== 'string' || !sourceExtensions.has(path.extname(file).toLowerCase())) {
+    return { skip: true };
+  }
   // CLAUDE_PROJECT_DIR is exported into every hook process; the event's
   // cwd covers a hook run outside a project directory.
   const project = process.env['CLAUDE_PROJECT_DIR'] ?? event.cwd;
@@ -207,10 +214,14 @@ export async function runCheck(argv: string[], io: CliIo): Promise<number> {
     return forClaude ? 0 : 2;
   };
 
+  const router = new PackRouter(createPacks());
+  const registry = router.registry;
+  const defaults = router.defaultChecks();
+
   let changes: ChangeSet | undefined;
   let projectFromEvent: string | undefined;
   if (forClaude) {
-    const event = await claudeChanges(io);
+    const event = await claudeChanges(io, router.sourceExtensions());
     if (event.skip) return 0;
     changes = event.changes;
     projectFromEvent = event.project;
@@ -218,9 +229,6 @@ export async function runCheck(argv: string[], io: CliIo): Promise<number> {
 
   const cwd = io.cwd ?? process.cwd();
   const project = values.project ?? projectFromEvent ?? cwd;
-  const router = new PackRouter(createPacks());
-  const registry = router.registry;
-  const defaults = router.defaultChecks();
 
   let config;
   try {
