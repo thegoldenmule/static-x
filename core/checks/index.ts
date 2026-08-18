@@ -1,6 +1,7 @@
 export {
   activeTools,
   checksBlock,
+  narrowSuite,
   resolveSuite,
   serializeSuite,
   suiteNames,

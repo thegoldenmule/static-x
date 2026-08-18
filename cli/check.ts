@@ -4,6 +4,7 @@ import {
   activeTools,
   branchChanges,
   loadBaseline,
+  narrowSuite,
   resolveSuite,
   runSuite,
   stagedChanges,
@@ -251,6 +252,25 @@ export async function runCheck(argv: string[], io: CliIo): Promise<number> {
     suite = resolveSuite(suiteName, config, defaults, registry);
   } catch (error) {
     return bail(error instanceof Error ? error.message : String(error));
+  }
+
+  // A suite is written for every language static-x ships; this project
+  // is one or two of them. Run only what binds here, and say what was
+  // left out — silence from a gate that dropped half its tools reads
+  // exactly like a gate that ran and found nothing.
+  const binding = new Set(router.bindingPacks(path.resolve(project)).map((pack) => pack.id));
+  const narrowed = narrowSuite(suite, (name) => binding.has(name.split('/')[0] ?? ''));
+  suite = narrowed.suite;
+  if (narrowed.dropped.length > 0 && format !== 'json') {
+    io.err(`${suiteName}: skipped ${narrowed.dropped.join(', ')} — no matching project here`);
+  }
+  if (activeTools(suite).length === 0) {
+    if (format === 'json') {
+      io.out(JSON.stringify({ suite: suiteName, blocking: [], advisory: [] }, null, 2));
+    } else {
+      io.err(`${suiteName}: nothing to check — no project here that static-x understands`);
+    }
+    return 0;
   }
 
   if (!forClaude) changes = gatherChanges(source, suite, cwd);

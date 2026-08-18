@@ -123,6 +123,21 @@ describe('static-x check', () => {
     expect(format.stderr()).toMatch(/--format must be json or text/);
   });
 
+  // A globally installed hook runs in every repository, including ones
+  // static-x has nothing to say about. Before packs, that exited 2 with
+  // "No tsconfig.json found" and wedged the commit.
+  it('exits 0, saying so, where no pack binds', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'sx-nolang-'));
+    try {
+      const c = capture();
+      expect(await runCli(['check', 'commit', '--project', dir], c.io)).toBe(0);
+      expect(c.stderr()).toContain('nothing to check');
+      expect(c.stderr()).toContain('skipped');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   describe('--from claude', () => {
     it('blocks with exit 2 and tells the model what to fix', async () => {
       const c = capture({ stdin: claudeEvent(path.join(FIXTURE, 'src/dropped.ts')) });

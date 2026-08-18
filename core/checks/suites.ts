@@ -214,6 +214,30 @@ export function serializeSuite(suite: CheckSuite): Record<string, unknown> {
 }
 
 /** The tools a suite actually runs, in registry order. */
+/**
+ * Drop the tools this project cannot run — a Swift suite in a
+ * TypeScript-only repository, and the reverse. Returns what was
+ * dropped rather than only the narrowed suite, because a gate that
+ * quietly stopped running half its tools looks exactly like a gate
+ * that ran and found nothing; the caller is expected to say so.
+ *
+ * Narrowing is for running, never for writing: `ratchet` serializes
+ * the suite it resolved, and writing a narrowed one back would delete
+ * the other pack's entries from static-x.json.
+ */
+export function narrowSuite(
+  suite: CheckSuite,
+  runs: (toolName: string) => boolean,
+): { suite: CheckSuite; dropped: string[] } {
+  const tools: Record<string, CheckEntry> = {};
+  const dropped: string[] = [];
+  for (const [name, entry] of Object.entries(suite.tools)) {
+    if (runs(name)) tools[name] = entry;
+    else if (entry.level !== 'off') dropped.push(name);
+  }
+  return { suite: { novelty: suite.novelty, tools }, dropped: dropped.sort() };
+}
+
 export function activeTools(suite: CheckSuite): { name: string; entry: CheckEntry }[] {
   return Object.entries(suite.tools)
     .filter(([, entry]) => entry.level !== 'off')

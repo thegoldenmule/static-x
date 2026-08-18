@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ToolRegistry, type Tool } from '../tool/index.js';
-import { activeTools, resolveSuite, suiteNames, type CheckSuite } from './suites.js';
+import { activeTools, narrowSuite, resolveSuite, suiteNames, type CheckSuite } from './suites.js';
 
 const FINDINGS_OUT = { type: 'array' };
 const EDIT_OUT = { type: 'object' };
@@ -94,5 +94,36 @@ describe('activeTools', () => {
       },
     };
     expect(activeTools(suite).map((t) => t.name)).toEqual(['ts/graph/cycles']);
+  });
+});
+
+describe('narrowSuite', () => {
+  const suite: CheckSuite = {
+    novelty: 'changed-lines',
+    tools: {
+      'ts/a': { level: 'block' },
+      'sw/a': { level: 'warn' },
+      'sw/b': { level: 'off' },
+    },
+  };
+
+  it('keeps only the tools the predicate admits', () => {
+    const { suite: narrowed } = narrowSuite(suite, (name) => name.startsWith('ts/'));
+    expect(Object.keys(narrowed.tools)).toEqual(['ts/a']);
+    expect(narrowed.novelty).toBe('changed-lines');
+  });
+
+  // Silence from a gate that dropped half its tools reads exactly like
+  // a gate that ran and found nothing, so the caller has to be able to
+  // tell the difference.
+  it('reports what it dropped, ignoring tools that were already off', () => {
+    const { dropped } = narrowSuite(suite, (name) => name.startsWith('ts/'));
+    expect(dropped).toEqual(['sw/a']);
+  });
+
+  it('narrows to nothing when no tool matches', () => {
+    const { suite: narrowed, dropped } = narrowSuite(suite, () => false);
+    expect(activeTools(narrowed)).toEqual([]);
+    expect(dropped).toEqual(['sw/a', 'ts/a']);
   });
 });
