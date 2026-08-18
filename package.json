@@ -12,6 +12,7 @@
     "cli",
     "core",
     "ts",
+    "swift",
     "mcp",
     "hooks",
     ".claude/skills",

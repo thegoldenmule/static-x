@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['{core,ts,cli,mcp,hooks}/**/*.test.ts'],
+    include: ['{core,ts,swift,gd,packs,cli,mcp,hooks}/**/*.test.ts'],
     /**
      * Vitest's 5s default sits inside the range these tests actually
      * take. A test that opens a session spawns typescript-language-
