@@ -25,7 +25,7 @@ const TOKEN_MODIFIERS = [
  * load-bearing one: omit it and semanticTokens/full answers null, which
  * reads exactly like the request being unsupported.
  */
-export const SWIFT_CAPABILITIES = {
+const SWIFT_CAPABILITIES = {
   window: { workDoneProgress: true },
   textDocument: {
     semanticTokens: {
@@ -48,7 +48,7 @@ export const SWIFT_CAPABILITIES = {
  * There is no --version flag; `swift --version` is the only way to
  * record which toolchain answered, and nothing here gates on it.
  */
-export function findSourcekitLsp(configured?: string): string {
+function findSourcekitLsp(configured?: string): string {
   if (configured) return configured;
   try {
     const found = execFileSync('xcrun', ['--find', 'sourcekit-lsp'], {
@@ -67,12 +67,12 @@ export function findSourcekitLsp(configured?: string): string {
  * of the project's own .build, so analysing a project never races the
  * developer's open editor or leaves artifacts behind.
  */
-export function spawnSwiftServer(serverPath: string, scratchPath?: string): ChildProcess {
+function spawnSwiftServer(serverPath: string, scratchPath?: string): ChildProcess {
   const args = scratchPath ? ['--scratch-path', scratchPath] : [];
   return spawn(serverPath, args, { stdio: ['pipe', 'pipe', 'pipe'] });
 }
 
-export interface SwiftServerOptions {
+interface SwiftServerOptions {
   serverPath?: string | undefined;
   scratchPath?: string | undefined;
 }

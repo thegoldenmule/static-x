@@ -48,8 +48,18 @@
           "createArrayTypeNode",
           "createUnionTypeNode",
           "parenthesizeConstituentTypesOfUnionType",
-          "parenthesizeNonArrayTypeOfPostfixType"
+          "parenthesizeNonArrayTypeOfPostfixType",
+          "buildServer.json"
         ]
+      }
+    },
+    "graph": {
+      "dead-exports": {
+        "input": {
+          "entryPoints": [
+            "swift/daemon/serve.ts"
+          ]
+        }
       }
     }
   }

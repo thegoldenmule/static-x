@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
-export type SwiftProjectKind = 'build-server' | 'swiftpm' | 'compilation-db' | 'xcode';
+type SwiftProjectKind = 'build-server' | 'swiftpm' | 'compilation-db' | 'xcode';
 
 export interface SwiftBinding {
   kind: SwiftProjectKind;

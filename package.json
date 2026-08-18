@@ -26,7 +26,8 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "sx": "tsx cli/main.ts",
-    "mcp": "tsx mcp/main.ts"
+    "mcp": "tsx mcp/main.ts",
+    "swift-daemon": "tsx swift/daemon/serve.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

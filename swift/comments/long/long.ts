@@ -5,14 +5,14 @@ import type { SwiftProjectSession } from '../../project/index.js';
 import { commentFileFor } from '../ranges.js';
 import { SWIFT_DIRECTIVE, SWIFT_LICENSE } from '../conventions.js';
 
-export interface LongCommentsInput {
+interface LongCommentsInput {
   /** Flag blocks spanning more than this many lines. Default 10. */
   maxLines?: number;
   /** Flag blocks longer than this many characters. Default 800. */
   maxChars?: number;
 }
 
-export async function findLongCommentsInFile(
+async function findLongCommentsInFile(
   session: SwiftProjectSession,
   file: string,
   input: LongCommentsInput = {},

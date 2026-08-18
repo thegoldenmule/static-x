@@ -5,12 +5,12 @@ import type { SwiftProjectSession } from '../../project/index.js';
 import { commentFileFor } from '../ranges.js';
 import { SWIFT_DIRECTIVE, swiftContentOf } from '../conventions.js';
 
-export interface LlmTellsInput {
+interface LlmTellsInput {
   /** Minimum summed pattern weight to flag a comment. Default 1. */
   minScore?: number;
 }
 
-export async function findLlmTellsInFile(
+async function findLlmTellsInFile(
   session: SwiftProjectSession,
   file: string,
   input: LlmTellsInput = {},
