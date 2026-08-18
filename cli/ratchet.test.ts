@@ -136,6 +136,39 @@ describe('static-x ratchet', () => {
     });
   });
 
+  /**
+   * Narrowing is for running, never for writing. A registered tool
+   * whose pack does not bind here is still a real entry in this file,
+   * and dropping it would silently disarm that gate everywhere else
+   * the config travels — a checkout with only the TypeScript half of a
+   * mixed repo would delete the Swift half's gates on first ratchet.
+   *
+   * This needs a tool that is registered but does not bind, which was
+   * unconstructible while one pack shipped: resolveSuite rejects an
+   * unregistered name outright, so a config naming one bails before
+   * the write is ever reached.
+   */
+  it('keeps entries for a registered pack that does not bind here', async () => {
+    const root = await fixtureCopy();
+    const file = path.join(root, 'static-x.json');
+    const config = JSON.parse(await readFile(file, 'utf8')) as {
+      checks: Record<string, { novelty: string; tools: Record<string, unknown> }>;
+    };
+    const promotable = config.checks['promotable'];
+    expect(promotable).toBeDefined();
+    promotable!.tools['swift/comments/long'] = { level: 'warn' };
+    await writeFile(file, JSON.stringify(config, null, 2), 'utf8');
+
+    const c = capture(root);
+    expect(await runCli(['ratchet', 'promotable', '--project', root, '--apply'], c.io)).toBe(0);
+
+    const after = await suites(root);
+    expect(after['promotable']?.tools['swift/comments/long']).toBe('warn');
+    // And the TypeScript half was still measured and tightened around
+    // it, so preserving the Swift entry did not cost the run.
+    expect(after['promotable']?.tools['ts/graph/cycles']).toBe('block');
+  });
+
   it('says a suite with no baseline needs one first', async () => {
     const root = await fixtureCopy();
     const c = capture(root);
