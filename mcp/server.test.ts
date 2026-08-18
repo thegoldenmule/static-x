@@ -2,14 +2,16 @@ import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTsRegistry } from '../ts/registry.js';
+import { PackRouter } from '../core/pack/index.js';
+import { createPacks } from '../packs/index.js';
 import { createMcpServer } from './server.js';
 
 const FIXTURE = path.resolve(import.meta.dirname, '../fixtures/basic-ts');
 
 describe('MCP adapter', () => {
-  const registry = createTsRegistry();
-  const { server, ferry } = createMcpServer(registry);
+  const router = new PackRouter(createPacks());
+  const { registry } = router;
+  const { server } = createMcpServer(router);
   const client = new Client({ name: 'test-client', version: '0.0.0' });
 
   beforeAll(async () => {
@@ -19,7 +21,7 @@ describe('MCP adapter', () => {
   afterAll(async () => {
     await client.close();
     await server.close();
-    await ferry.dispose();
+    await router.dispose();
   });
 
   it('lists every registered tool with projectRoot added to its schema', async () => {

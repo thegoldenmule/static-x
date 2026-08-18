@@ -4,12 +4,14 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { FILES_SCHEMA, supportsFileScope } from '../core/files/index.js';
-import type { JsonSchema, ToolRegistry } from '../core/tool/index.js';
-import { TsFerry } from '../ts/ferry/ferry.js';
+import type { JsonSchema } from '../core/tool/index.js';
+import { PackRouter } from '../core/pack/index.js';
 
 /**
- * MCP adapter over the tool registry. Tool names swap '/' for '_'
- * (MCP forbids slashes): ts/comments/long -> ts_comments_long. Every
+ * MCP adapter over the router's registry. Tool names swap '/' for '_'
+ * (MCP forbids slashes): ts/comments/long -> ts_comments_long. The
+ * round-trip is lossless because the registry's name pattern admits no
+ * underscore, which mcpNames() asserts rather than assumes. Every
  * MCP tool takes the underlying tool's input plus projectRoot, and
  * analysis tools also take `files` to report on a subset of the project
  * ("check what I just changed"); the ferry caches one session per root,
@@ -23,28 +25,29 @@ import { TsFerry } from '../ts/ferry/ferry.js';
  * structuredContent: { result } alongside the serialized-JSON text
  * content (the spec recommends both, for text-only clients).
  */
-export function createMcpServer(registry: ToolRegistry): { server: Server; ferry: TsFerry } {
-  const ferry = new TsFerry(registry);
+export function createMcpServer(router: PackRouter): { server: Server; router: PackRouter } {
+  const { registry } = router;
+  const byMcpName = mcpNames(registry.names());
   const server = new Server(
     { name: 'static-x', version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
 
-  const mcpName = (name: string) => name.replaceAll('/', '_');
-  const registryName = (name: string) => name.replaceAll('_', '/');
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: registry.list().map((tool) => {
       const schema = tool.inputSchema as { properties?: Record<string, JsonSchema>; required?: string[] };
       return {
-        name: mcpName(tool.name),
+        name: toMcpName(tool.name),
         description: tool.description,
         inputSchema: {
           type: 'object' as const,
           properties: {
             projectRoot: {
               type: 'string',
-              description: 'Absolute path of the project to analyze (its root or any dir containing tsconfig.json)',
+              description:
+                'Absolute path of the project to analyze — ' +
+                router.packForTool(tool.name).projectRootHint,
             },
             ...(supportsFileScope(tool) ? { files: FILES_SCHEMA } : {}),
             ...(schema.properties ?? {}),
@@ -69,7 +72,11 @@ export function createMcpServer(registry: ToolRegistry): { server: Server; ferry
       if (typeof projectRoot !== 'string' || projectRoot === '') {
         throw new Error('projectRoot (string) is required');
       }
-      const result = await ferry.call(registryName(request.params.name), projectRoot, input);
+      const toolName = byMcpName.get(request.params.name);
+      if (toolName === undefined) {
+        throw new Error(`Unknown tool "${request.params.name}"`);
+      }
+      const result = await router.call(toolName, projectRoot, input);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         structuredContent: { result },
@@ -82,5 +89,26 @@ export function createMcpServer(registry: ToolRegistry): { server: Server; ferry
     }
   });
 
-  return { server, ferry };
+  return { server, router };
+}
+
+const toMcpName = (name: string) => name.replaceAll('/', '_');
+
+/**
+ * MCP name back to registry name, by lookup rather than by reversing
+ * the substitution. Reversing is only sound while no registered name
+ * contains an underscore, which is true — the registry's name pattern
+ * forbids it — but true by a rule enforced somewhere else entirely.
+ */
+function mcpNames(names: readonly string[]): ReadonlyMap<string, string> {
+  const map = new Map<string, string>();
+  for (const name of names) {
+    const mcp = toMcpName(name);
+    const clash = map.get(mcp);
+    if (clash !== undefined) {
+      throw new Error(`Tools "${clash}" and "${name}" both map to the MCP name "${mcp}"`);
+    }
+    map.set(mcp, name);
+  }
+  return map;
 }
