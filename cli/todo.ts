@@ -9,9 +9,8 @@ import {
   type TodoList,
 } from '../core/checks/index.js';
 import { loadProjectConfig, type ProjectConfig } from '../core/config/index.js';
-import { TsFerry } from '../ts/ferry/ferry.js';
-import { TS_DEFAULT_CHECKS, TS_FIXABLE_CODES } from '../ts/checks.js';
-import { createTsRegistry } from '../ts/registry.js';
+import { PackRouter } from '../core/pack/index.js';
+import { createPacks } from '../packs/index.js';
 import { findingLine } from './format.js';
 import { isHelpFlag } from './usage.js';
 import type { CliIo } from './io.js';
@@ -27,7 +26,7 @@ import type { CliIo } from './io.js';
  * enumerate.
  *
  * The default list is narrowed to codes whose fix a typecheck and a test
- * run can actually vouch for — see TS_FIXABLE_CODES for which and why.
+ * run can actually vouch for — each pack’s fixableCodes says which and why.
  * `--all` shows the whole backlog, for a human deciding what to do next.
  */
 
@@ -75,11 +74,14 @@ function textLines(todo: TodoList, suite: string, cwd: string, rootPath: string)
   return lines;
 }
 
-function fixableFor(config: ProjectConfig | undefined): ReadonlySet<string> {
+function fixableFor(
+  config: ProjectConfig | undefined,
+  packDefault: ReadonlySet<string>,
+): ReadonlySet<string> {
   const todo = config?.['todo'];
-  if (todo === null || typeof todo !== 'object' || Array.isArray(todo)) return TS_FIXABLE_CODES;
+  if (todo === null || typeof todo !== 'object' || Array.isArray(todo)) return packDefault;
   const codes = (todo as Record<string, unknown>)['codes'];
-  if (!Array.isArray(codes)) return TS_FIXABLE_CODES;
+  if (!Array.isArray(codes)) return packDefault;
   return new Set(codes.filter((code): code is string => typeof code === 'string'));
 }
 
@@ -125,13 +127,15 @@ export async function runTodo(argv: string[], io: CliIo): Promise<number> {
   const cwd = io.cwd ?? process.cwd();
   const rootPath = path.resolve(values.project ?? cwd);
   const suiteName = positionals[0] ?? 'push';
-  const registry = createTsRegistry();
+  const router = new PackRouter(createPacks());
+  const registry = router.registry;
+  const defaults = router.defaultChecks();
 
   let config;
   let suite: CheckSuite;
   try {
     config = await loadProjectConfig(rootPath);
-    suite = resolveSuite(suiteName, config, TS_DEFAULT_CHECKS, registry);
+    suite = resolveSuite(suiteName, config, defaults, registry);
   } catch (error) {
     io.err(error instanceof Error ? error.message : String(error));
     return 2;
@@ -143,7 +147,7 @@ export async function runTodo(argv: string[], io: CliIo): Promise<number> {
     return 2;
   }
 
-  const ferry = new TsFerry(registry);
+  const ferry = router;
   let todo: TodoList;
   try {
     // Unfiltered: novelty would hide precisely what we are asking for.
@@ -153,7 +157,7 @@ export async function runTodo(argv: string[], io: CliIo): Promise<number> {
       outcomes: report.outcomes,
       baseline,
       rootPath,
-      fixable: values.all ? new Set(codes) : fixableFor(config),
+      fixable: values.all ? new Set(codes) : fixableFor(config, router.fixableCodes()),
       ...(values.code ? { only: new Set(values.code) } : {}),
     });
   } catch (error) {

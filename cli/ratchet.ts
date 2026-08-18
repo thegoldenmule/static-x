@@ -17,9 +17,8 @@ import {
 } from '../core/checks/index.js';
 import { CONFIG_FILENAME, loadProjectConfig } from '../core/config/index.js';
 import type { Finding } from '../core/tool/index.js';
-import { TsFerry } from '../ts/ferry/ferry.js';
-import { TS_DEFAULT_CHECKS } from '../ts/checks.js';
-import { createTsRegistry } from '../ts/registry.js';
+import { PackRouter } from '../core/pack/index.js';
+import { createPacks } from '../packs/index.js';
 import { isHelpFlag } from './usage.js';
 import type { CliIo } from './io.js';
 
@@ -109,14 +108,16 @@ function tightened(suite: CheckSuite, plan: RatchetPlan): CheckSuite {
 async function writeConfig(
   root: string,
   suites: Map<string, CheckSuite>,
-  registry: ReturnType<typeof createTsRegistry>,
+  router: PackRouter,
   config: Record<string, unknown> | undefined,
 ): Promise<void> {
+  const { registry } = router;
+  const defaults = router.defaultChecks();
   const file = path.join(root, CONFIG_FILENAME);
   const existing: Record<string, unknown> = config ? { ...config } : {};
   const checks: Record<string, unknown> = {};
-  for (const name of suiteNames(config, TS_DEFAULT_CHECKS)) {
-    const suite = suites.get(name) ?? resolveSuite(name, config, TS_DEFAULT_CHECKS, registry);
+  for (const name of suiteNames(config, defaults)) {
+    const suite = suites.get(name) ?? resolveSuite(name, config, defaults, registry);
     checks[name] = serializeSuite(suite);
   }
   await writeFile(file, `${JSON.stringify({ ...existing, checks }, null, 2)}\n`, 'utf8');
@@ -146,7 +147,9 @@ export async function runRatchet(argv: string[], io: CliIo): Promise<number> {
   const cwd = io.cwd ?? process.cwd();
   const root = path.resolve(values.project ?? cwd);
   const apply = values.apply ?? false;
-  const registry = createTsRegistry();
+  const router = new PackRouter(createPacks());
+  const registry = router.registry;
+  const defaults = router.defaultChecks();
 
   let config;
   try {
@@ -156,8 +159,8 @@ export async function runRatchet(argv: string[], io: CliIo): Promise<number> {
     return 2;
   }
 
-  const names = positionals.length > 0 ? positionals : suiteNames(config, TS_DEFAULT_CHECKS);
-  const ferry = new TsFerry(registry);
+  const names = positionals.length > 0 ? positionals : suiteNames(config, defaults);
+  const ferry = router;
   const plans: RatchetPlan[] = [];
   const tightenedSuites = new Map<string, CheckSuite>();
   let retire = false;
@@ -165,7 +168,7 @@ export async function runRatchet(argv: string[], io: CliIo): Promise<number> {
   try {
     const baseline = await loadBaseline(root);
     for (const suiteName of names) {
-      const suite = resolveSuite(suiteName, config, TS_DEFAULT_CHECKS, registry);
+      const suite = resolveSuite(suiteName, config, defaults, registry);
       // Unfiltered, whole project: the only view a ratchet can reason
       // from. One commit's worth of evidence is not grounds to tighten.
       const report = await runSuite({ suite, rootPath: root, dispatcher: ferry });
@@ -205,7 +208,7 @@ export async function runRatchet(argv: string[], io: CliIo): Promise<number> {
   }
 
   try {
-    await writeConfig(root, tightenedSuites, registry, config);
+    await writeConfig(root, tightenedSuites, router, config);
     io.out('');
     io.out(`Updated ${path.relative(cwd, path.join(root, CONFIG_FILENAME)) || CONFIG_FILENAME}`);
     if (retire) {

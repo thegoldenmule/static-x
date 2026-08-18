@@ -4,7 +4,8 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { CONFIG_FILENAME } from '../core/config/index.js';
 import { serializeSuite } from '../core/checks/index.js';
-import { TS_DEFAULT_CHECKS } from '../ts/checks.js';
+import { PackRouter } from '../core/pack/index.js';
+import { createPacks } from '../packs/index.js';
 import { isHelpFlag } from './usage.js';
 import type { CliIo } from './io.js';
 
@@ -215,7 +216,8 @@ async function configChanges(root: string): Promise<Change[]> {
   if (config['checks'] !== undefined) return [];
 
   const checks: Record<string, unknown> = {};
-  for (const [name, suite] of Object.entries(TS_DEFAULT_CHECKS)) {
+  const defaults = new PackRouter(createPacks()).defaultChecks();
+  for (const [name, suite] of Object.entries(defaults)) {
     checks[name] = serializeSuite(suite);
   }
   const next = { checks, ...config };

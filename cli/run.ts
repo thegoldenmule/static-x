@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
-import { TsFerry } from '../ts/ferry/ferry.js';
-import { createTsRegistry } from '../ts/registry.js';
+import { PackRouter } from '../core/pack/index.js';
+import { createPacks } from '../packs/index.js';
 import { formatResult, isOutputFormat } from './format.js';
 import { isHelpFlag } from './usage.js';
 
@@ -70,7 +70,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
   // --help | less` come back empty — and makes a forgotten argument look
   // like success to whatever is checking the exit code.
   if (first !== undefined && isHelpFlag(first)) {
-    const registry = createTsRegistry();
+    const registry = new PackRouter(createPacks()).registry;
     for (const line of USAGE) io.out(line);
     io.out('');
     io.out(`Tools: ${registry.names().join(', ')}`);
@@ -117,7 +117,8 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
     return 2;
   }
 
-  const registry = createTsRegistry();
+  const router = new PackRouter(createPacks());
+  const registry = router.registry;
   const [toolName] = parsed.positionals;
   const project = parsed.values.project;
   if (!toolName || !project) {
@@ -172,7 +173,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
   }
 
   const cwd = io.cwd ?? process.cwd();
-  const ferry = new TsFerry(registry);
+  const ferry = router;
   try {
     const result = await ferry.call(toolName, project, input);
     for (const line of formatResult(result, format, cwd)) io.out(line);

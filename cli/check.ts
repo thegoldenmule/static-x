@@ -15,9 +15,8 @@ import {
 } from '../core/checks/index.js';
 import { loadProjectConfig } from '../core/config/index.js';
 import type { Finding } from '../core/tool/index.js';
-import { TsFerry } from '../ts/ferry/ferry.js';
-import { TS_DEFAULT_CHECKS } from '../ts/checks.js';
-import { createTsRegistry } from '../ts/registry.js';
+import { PackRouter } from '../core/pack/index.js';
+import { createPacks } from '../packs/index.js';
 import { findingLine } from './format.js';
 import { isHelpFlag } from './usage.js';
 import type { CliIo } from './io.js';
@@ -137,13 +136,15 @@ function reportLines(report: CheckReport, suite: string, cwd: string): string[] 
 
 function listSuites(
   config: Awaited<ReturnType<typeof loadProjectConfig>>,
-  registry: ReturnType<typeof createTsRegistry>,
+  router: PackRouter,
   io: CliIo,
 ): number {
-  for (const name of suiteNames(config, TS_DEFAULT_CHECKS)) {
+  const { registry } = router;
+  const defaults = router.defaultChecks();
+  for (const name of suiteNames(config, defaults)) {
     let suite: CheckSuite;
     try {
-      suite = resolveSuite(name, config, TS_DEFAULT_CHECKS, registry);
+      suite = resolveSuite(name, config, defaults, registry);
     } catch (error) {
       io.err(`${name}: ${error instanceof Error ? error.message : String(error)}`);
       return 2;
@@ -217,7 +218,9 @@ export async function runCheck(argv: string[], io: CliIo): Promise<number> {
 
   const cwd = io.cwd ?? process.cwd();
   const project = values.project ?? projectFromEvent ?? cwd;
-  const registry = createTsRegistry();
+  const router = new PackRouter(createPacks());
+  const registry = router.registry;
+  const defaults = router.defaultChecks();
 
   let config;
   try {
@@ -226,18 +229,18 @@ export async function runCheck(argv: string[], io: CliIo): Promise<number> {
     return bail(error instanceof Error ? error.message : String(error));
   }
 
-  if (values.list) return listSuites(config, registry, io);
+  if (values.list) return listSuites(config, router, io);
 
   const [suiteName] = positionals;
   if (suiteName === undefined) {
     for (const line of CHECK_USAGE) io.err(line);
-    io.err(`Suites: ${suiteNames(config, TS_DEFAULT_CHECKS).join(', ')}`);
+    io.err(`Suites: ${suiteNames(config, defaults).join(', ')}`);
     return forClaude ? 0 : 2;
   }
 
   let suite: CheckSuite;
   try {
-    suite = resolveSuite(suiteName, config, TS_DEFAULT_CHECKS, registry);
+    suite = resolveSuite(suiteName, config, defaults, registry);
   } catch (error) {
     return bail(error instanceof Error ? error.message : String(error));
   }
@@ -251,7 +254,7 @@ export async function runCheck(argv: string[], io: CliIo): Promise<number> {
     return 0;
   }
 
-  const ferry = new TsFerry(registry);
+  const ferry = router;
   try {
     const rootPath = path.resolve(project);
     const baseline = suite.novelty === 'baseline' ? await loadBaseline(rootPath) : undefined;
@@ -306,20 +309,22 @@ export async function runBaselineCommand(argv: string[], io: CliIo): Promise<num
 
   const project = values.project ?? io.cwd ?? process.cwd();
   const rootPath = path.resolve(project);
-  const registry = createTsRegistry();
+  const router = new PackRouter(createPacks());
+  const registry = router.registry;
+  const defaults = router.defaultChecks();
   const suiteName = positionals[0] ?? 'push';
 
   let suite: CheckSuite;
   let config;
   try {
     config = await loadProjectConfig(rootPath);
-    suite = resolveSuite(suiteName, config, TS_DEFAULT_CHECKS, registry);
+    suite = resolveSuite(suiteName, config, defaults, registry);
   } catch (error) {
     io.err(error instanceof Error ? error.message : String(error));
     return 2;
   }
 
-  const ferry = new TsFerry(registry);
+  const ferry = router;
   try {
     // Recorded unfiltered by novelty: the baseline is the "before" that
     // novelty is measured against, so filtering it against itself would
