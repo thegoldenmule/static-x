@@ -7,7 +7,7 @@ import { CHANGELOG, FILLERS, NARRATION_WEIGHT } from './patterns.js';
 /** Ignore-filter key length; matches core/comments/long. */
 const MAX_NAME_CHARS = 60;
 
-export interface LlmTellsOptions {
+interface LlmTellsOptions {
   /** Minimum summed pattern weight to flag a comment. Default 1. */
   minScore?: number;
   /** Strip this language's comment markers, leaving the prose. */
@@ -23,7 +23,8 @@ const WORD = /[A-Za-z_$][\w$]*/g;
 
 /**
  * Words of the comment plus concatenations of 2-3 consecutive words,
- * lowercased, so "total count" can match the code token `totalCount`.
+ * lowercased, so the two words "total count" can match a single
+ * camelCased identifier in the line below.
  */
 function commentNgrams(text: string): Set<string> {
   const words = [...text.matchAll(WORD)].map((match) => match[0].toLowerCase());

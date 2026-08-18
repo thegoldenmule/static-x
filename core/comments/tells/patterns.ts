@@ -5,7 +5,7 @@
  * patterns need company.
  */
 
-export interface TellPattern {
+interface TellPattern {
   id: string;
   pattern: RegExp;
   weight: number;

@@ -1,6 +1,6 @@
 import type { Position } from '../tool/index.js';
 
-/** Offset of the first character of every line, `getLineStarts()`-shaped. */
+/** Offset of the first character of every line, lowest first. */
 export function lineStartsOf(text: string): number[] {
   const starts = [0];
   for (let i = 0; i < text.length; i++) {

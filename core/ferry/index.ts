@@ -1,1 +1,1 @@
-export { Ferry, type FerrySession } from './ferry.js';
+export { Ferry } from './ferry.js';

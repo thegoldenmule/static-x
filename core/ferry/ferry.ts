@@ -31,7 +31,7 @@ import { ToolRegistry, type ProjectSession, type Tool } from '../tool/index.js';
  * contract. Kept here rather than on ProjectSession so that contract
  * stays the three members a tool consumer actually depends on.
  */
-export interface FerrySession extends ProjectSession {
+interface FerrySession extends ProjectSession {
   setScope(scope: FileScope | undefined): void;
 }
 

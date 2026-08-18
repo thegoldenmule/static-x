@@ -3,7 +3,7 @@ import { truncateFlat } from '../text/index.js';
 import { positionAt } from '../text/index.js';
 import type { CommentBlock, CommentFile } from './types.js';
 
-export interface LongCommentsOptions {
+interface LongCommentsOptions {
   /** Flag blocks spanning more than this many lines. Default 10. */
   maxLines?: number;
   /** Flag blocks longer than this many characters. Default 800. */
