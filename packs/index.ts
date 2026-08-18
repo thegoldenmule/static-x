@@ -1,4 +1,5 @@
 import type { LanguagePack } from '../core/pack/index.js';
+import { swiftPack } from '../swift/pack.js';
 import { tsPack } from '../ts/pack.js';
 
 /**
@@ -8,5 +9,5 @@ import { tsPack } from '../ts/pack.js';
  * to break once), so it is its own layer.
  */
 export function createPacks(): LanguagePack[] {
-  return [tsPack];
+  return [tsPack, swiftPack];
 }

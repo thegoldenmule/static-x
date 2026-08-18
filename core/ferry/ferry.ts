@@ -60,6 +60,30 @@ function readFiles(input: Record<string, unknown>, tool: Tool): string[] | undef
   return files as string[];
 }
 
+/**
+ * Would a `files` scope in this input select nothing this pack
+ * analyzes? Exported because a pack that puts a daemon in front of the
+ * ferry has to answer this before it contacts one: a commit touching no
+ * file of this language must not start a language server, and starting
+ * one is exactly what contacting the daemon does.
+ *
+ * Returns false for input with no `files` key and for a malformed one,
+ * so the real dispatch below still reports the error.
+ */
+export function scopeSelectsNothing(
+  input: unknown,
+  projectRoot: string,
+  sourceExtensions: ReadonlySet<string>,
+): boolean {
+  const files = asRecord(input).files;
+  if (!Array.isArray(files) || files.some((file) => typeof file !== 'string')) return false;
+  return FileScope.from(
+    files as string[],
+    [path.resolve(projectRoot), process.cwd()],
+    sourceExtensions,
+  ).selectsNothing();
+}
+
 function withoutReservedKeys(input: Record<string, unknown>): Record<string, unknown> {
   const rest = { ...input };
   for (const key of RESERVED_INPUT_KEYS) delete rest[key];

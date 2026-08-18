@@ -1,1 +1,1 @@
-export { Ferry } from './ferry.js';
+export { Ferry, scopeSelectsNothing } from './ferry.js';
