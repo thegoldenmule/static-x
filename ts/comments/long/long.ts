@@ -1,9 +1,9 @@
 import ts from 'typescript';
 import type { Finding, Tool } from '../../../core/tool/index.js';
 import { FINDINGS_ARRAY_SCHEMA } from '../../../core/tool/index.js';
-import { truncateFlat } from '../../../core/text/index.js';
+import { findLongComments, toBlocks } from '../../../core/comments/index.js';
 import type { TsProjectSession } from '../../project/index.js';
-import { collectCommentRanges, toBlocks } from '../collect.js';
+import { DIRECTIVE, toCommentFile } from '../collect.js';
 
 export interface LongCommentsInput {
   /** Flag blocks spanning more than this many lines. Default 10. */
@@ -12,54 +12,14 @@ export interface LongCommentsInput {
   maxChars?: number;
 }
 
-const DEFAULT_MAX_LINES = 10;
-const DEFAULT_MAX_CHARS = 800;
-/** data.name is the flattened comment head, the static-x.json ignore key. */
-const MAX_NAME_CHARS = 60;
-
 const LICENSE = /\b(?:copyright|licen[cs]e|spdx)\b|\(c\)/i;
 
 export function findLongCommentsInFile(
   sourceFile: ts.SourceFile,
   input: LongCommentsInput = {},
 ): Finding[] {
-  const maxLines = input.maxLines ?? DEFAULT_MAX_LINES;
-  const maxChars = input.maxChars ?? DEFAULT_MAX_CHARS;
-  const text = sourceFile.getFullText();
-  const firstToken = sourceFile.getStart();
-  const findings: Finding[] = [];
-
-  for (const block of toBlocks(sourceFile, collectCommentRanges(sourceFile))) {
-    const lines = block.endLine - block.startLine + 1;
-    const chars = block.end - block.pos;
-    if (lines <= maxLines && chars <= maxChars) continue;
-    // License/copyright headers are conventionally long; skip them.
-    if (block.end <= firstToken && LICENSE.test(text.slice(block.pos, block.end))) continue;
-
-    const reason =
-      lines > maxLines
-        ? `spans ${lines} lines (limit ${maxLines})`
-        : `is ${chars} characters (limit ${maxChars})`;
-    findings.push({
-      file: sourceFile.fileName,
-      range: {
-        start: { line: block.startLine, character: 0 },
-        end: sourceFile.getLineAndCharacterOfPosition(block.end),
-      },
-      code: 'comment.long',
-      message: `Comment block ${reason}. Long comments often restate code or hide stale context; consider tightening or deleting.`,
-      severity: 'info',
-      data: {
-        name: truncateFlat(text.slice(block.pos, block.end), MAX_NAME_CHARS),
-        lines,
-        chars,
-        maxLines,
-        maxChars,
-        kind: block.kind,
-      },
-    });
-  }
-  return findings;
+  const file = toCommentFile(sourceFile);
+  return findLongComments(file, toBlocks(file, DIRECTIVE), { ...input, license: LICENSE });
 }
 
 export const longComments: Tool<LongCommentsInput, Finding[], TsProjectSession> = {

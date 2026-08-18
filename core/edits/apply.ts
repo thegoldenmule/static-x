@@ -2,14 +2,7 @@ import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FileOperation, Position, TextEdit, WorkspaceEdit } from '../tool/index.js';
-
-function lineStarts(text: string): number[] {
-  const starts = [0];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === '\n') starts.push(i + 1);
-  }
-  return starts;
-}
+import { lineStartsOf } from '../text/index.js';
 
 function offsetAt(starts: number[], text: string, position: Position): number {
   const lineStart = starts[position.line];
@@ -21,7 +14,7 @@ function offsetAt(starts: number[], text: string, position: Position): number {
 
 /** Apply LSP-style text edits to a document. Edits must not overlap. */
 export function applyTextEdits(text: string, edits: TextEdit[]): string {
-  const starts = lineStarts(text);
+  const starts = lineStartsOf(text);
   const resolved = edits
     .map((edit) => ({
       start: offsetAt(starts, text, edit.range.start),
