@@ -1,7 +1,6 @@
 import { Ferry } from '../../core/ferry/index.js';
 import type { ToolRegistry } from '../../core/tool/index.js';
-import { TsProjectSession } from '../project/index.js';
-import { TS_SOURCE_EXTENSIONS } from '../pack.js';
+import { TsProjectSession, TS_SOURCE_EXTENSIONS } from '../project/index.js';
 
 /** The shared dispatcher, bound to TypeScript sessions. */
 export class TsFerry extends Ferry<TsProjectSession> {

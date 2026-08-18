@@ -27,6 +27,35 @@ import { TsLanguageService } from './service.js';
  * Tools mutate through WorkspaceEdits; after an apply, invalidate()
  * re-reads the changed files from disk.
  */
+/** Extensions a ts.Program can hold source files for. */
+export const TS_SOURCE_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+]);
+
+/**
+ * The tsconfig.json a project at `absRoot` binds to, if any. Shared by
+ * open() and by the pack's binds() so the two cannot drift and offer a
+ * tool that then fails to open a session.
+ */
+function findTsConfig(absRoot: string): string | undefined {
+  const configPath = ts.findConfigFile(absRoot, ts.sys.fileExists.bind(ts.sys));
+  if (!configPath) return undefined;
+  const resolved = path.resolve(configPath);
+  return resolved.startsWith(absRoot + path.sep) ? resolved : undefined;
+}
+
+/** Would open() succeed here? Filesystem only — no session, no server. */
+export function bindsTypeScript(rootPath: string): boolean {
+  return findTsConfig(path.resolve(rootPath)) !== undefined;
+}
+
 export class TsProjectSession implements ProjectSession {
   readonly language = 'ts';
   readonly rootPath: string;
@@ -44,11 +73,11 @@ export class TsProjectSession implements ProjectSession {
 
   static open(rootPath: string): TsProjectSession {
     const absRoot = path.resolve(rootPath);
-    const configPath = ts.findConfigFile(absRoot, ts.sys.fileExists.bind(ts.sys));
-    if (!configPath || !path.resolve(configPath).startsWith(absRoot + path.sep)) {
+    const configPath = findTsConfig(absRoot);
+    if (!configPath) {
       throw new Error(`No tsconfig.json found under ${absRoot}`);
     }
-    return new TsProjectSession(absRoot, path.resolve(configPath));
+    return new TsProjectSession(absRoot, configPath);
   }
 
   /** The LSP view. First call spawns and initializes the server. */
