@@ -49,21 +49,37 @@ export class LspClient {
     return this.#stderr;
   }
 
-  async initialize(rootPath: string): Promise<InitializeResult> {
+  /**
+   * Completes the handshake. `capabilities` is deep-merged over the
+   * base blob, because a server gates on what the client declares:
+   * omit textDocument.semanticTokens and semanticTokens/full answers
+   * null, which is indistinguishable from the request being
+   * unsupported. A pack that needs a request has to say so here, and
+   * the failure for not saying so is silent.
+   */
+  async initialize(
+    rootPath: string,
+    capabilities?: Record<string, unknown>,
+    initializationOptions?: unknown,
+  ): Promise<InitializeResult> {
     const rootUri = pathToFileURL(rootPath).href;
     const result = await this.#connection.sendRequest('initialize', {
       processId: process.pid,
       rootUri,
       workspaceFolders: [{ uri: rootUri, name: 'root' }],
-      capabilities: {
-        textDocument: {
-          hover: { contentFormat: ['markdown', 'plaintext'] },
-          definition: {},
-          rename: { prepareSupport: true },
-          publishDiagnostics: {},
+      capabilities: deepMerge(
+        {
+          textDocument: {
+            hover: { contentFormat: ['markdown', 'plaintext'] },
+            definition: {},
+            rename: { prepareSupport: true },
+            publishDiagnostics: {},
+          },
+          workspace: { workspaceEdit: { documentChanges: false } },
         },
-        workspace: { workspaceEdit: { documentChanges: false } },
-      },
+        capabilities,
+      ),
+      ...(initializationOptions === undefined ? {} : { initializationOptions }),
     });
     await this.#connection.sendNotification('initialized', {});
     this.#initialized = true;
@@ -153,3 +169,30 @@ export class LspClient {
     this.#connection.dispose();
   }
 }
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Merge `extra` over `base`, recursing into plain objects. Arrays and
+ * scalars replace rather than combine — a pack overriding a declared
+ * list means to replace it, not to append to whatever core happened to
+ * declare.
+ */
+function deepMerge(
+  base: Record<string, unknown>,
+  extra: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!extra) return base;
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(extra)) {
+    const existing = merged[key];
+    merged[key] =
+      isPlainObject(existing) && isPlainObject(value) ? deepMerge(existing, value) : value;
+  }
+  return merged;
+}
+
+/** Exposed for tests: the merge that decides what the handshake declares. */
+export const __testing = { deepMerge };
