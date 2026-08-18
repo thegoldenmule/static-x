@@ -1,6 +1,7 @@
 import { ToolRegistry } from '../core/tool/index.js';
 import { swiftLlmTells } from './comments/llm-tells/llm-tells.js';
 import { swiftLongComments } from './comments/long/long.js';
+import { swiftStaleRefs } from './comments/stale-refs/stale-refs.js';
 
 /**
  * Every shipped Swift tool, registered in the alphabetical order the
@@ -10,5 +11,6 @@ export function createSwiftRegistry(): ToolRegistry {
   const registry = new ToolRegistry();
   registry.register(swiftLlmTells);
   registry.register(swiftLongComments);
+  registry.register(swiftStaleRefs);
   return registry;
 }

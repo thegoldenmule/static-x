@@ -29,6 +29,7 @@ describe('MCP adapter', () => {
     expect(tools.map((t) => t.name).sort()).toEqual([
       'swift_comments_llm-tells',
       'swift_comments_long',
+      'swift_comments_stale-refs',
       'ts_async_floating-promises',
       'ts_comments_llm-tells',
       'ts_comments_long',

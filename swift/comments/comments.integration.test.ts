@@ -4,6 +4,7 @@ import type { Finding } from '../../core/tool/index.js';
 import { SwiftProjectSession } from '../project/index.js';
 import { swiftLlmTells } from './llm-tells/llm-tells.js';
 import { swiftLongComments } from './long/long.js';
+import { swiftStaleRefs } from './stale-refs/stale-refs.js';
 
 const FIXTURE = path.resolve(import.meta.dirname, '../../fixtures/basic-swift');
 
@@ -111,5 +112,76 @@ describe('the Swift comment family', () => {
     // The three-line header, the two-line DocC block. Both are real
     // comments in a file whose string literals look like comments.
     expect(strings.length).toBeGreaterThanOrEqual(2);
+  });
+
+  describe('comments/stale-refs', () => {
+    it('reports exactly the references that no longer resolve', async () => {
+      const findings = await swiftStaleRefs.run(session, {});
+      expect(findings.map((f) => f.data?.['name']).sort()).toEqual([
+        'LegacyGreeter',
+        'LegacyUtils.swift',
+        'WidgetRegistry',
+        'formatSalutation',
+        'userName',
+      ]);
+    });
+
+    /**
+     * Swift declares an argument label and an internal name, and a doc
+     * comment naming either is correct. Labels and names differ on
+     * 6.8% to 25% of documented parameters across the corpora, so
+     * requiring one would false-positive on up to a quarter of them.
+     */
+    it('accepts a - Parameter naming the label or the internal name', async () => {
+      const findings = await swiftStaleRefs.run(session, {});
+      const params = findings.filter((f) => f.code === 'comment.stale-param');
+      expect(params).toHaveLength(1);
+      expect(params[0]?.data?.['name']).toBe('userName');
+      expect(params[0]?.message).toContain('parameters: name, excited');
+    });
+
+    it('classifies a missing file as a file rather than a symbol', async () => {
+      const findings = await swiftStaleRefs.run(session, {});
+      const file = findings.find((f) => f.data?.['kind'] === 'file');
+      expect(file?.data?.['name']).toBe('LegacyUtils.swift');
+      expect(file?.message).toContain('is not in this project');
+    });
+
+    /**
+     * Each of these resolves through a different tier, and the tool is
+     * only worth having if every one of them holds: a string literal, an
+     * enum case, the SDK index, a keyword, a real file, and a path the
+     * project could not be expected to own.
+     */
+    it('resolves through every tier, so it stays quiet about real names', async () => {
+      const findings = await swiftStaleRefs.run(session, {});
+      const names = new Set(findings.map((f) => f.data?.['name']));
+      for (const resolved of [
+        'pipelineStage',
+        'addWidget',
+        'ISO8601DateFormatter',
+        'sorted',
+        'guard',
+        'Math.swift',
+        'for',
+        'recipient',
+        '~/.config/basic.json',
+      ]) {
+        expect(names.has(resolved)).toBe(false);
+      }
+    });
+
+    it('points at the reference inside the comment, not the whole block', async () => {
+      const findings = await swiftStaleRefs.run(session, {});
+      const legacy = findings.find((f) => f.data?.['name'] === 'LegacyGreeter');
+      expect(legacy).toBeDefined();
+      const width = (legacy?.range.end.character ?? 0) - (legacy?.range.start.character ?? 0);
+      expect(width).toBe('LegacyGreeter'.length);
+    });
+
+    it('reports nothing in the all-resolves control', async () => {
+      const findings = await swiftStaleRefs.run(session, {});
+      expect(findings.some((f) => path.basename(f.file) === 'Notes.swift')).toBe(false);
+    });
   });
 });

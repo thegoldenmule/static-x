@@ -57,7 +57,8 @@
       "dead-exports": {
         "input": {
           "entryPoints": [
-            "swift/daemon/serve.ts"
+            "swift/daemon/serve.ts",
+            "swift/data/generate.ts"
           ]
         }
       }

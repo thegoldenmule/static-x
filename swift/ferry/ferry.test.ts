@@ -58,7 +58,9 @@ describe('SwiftFerry', () => {
     const findings = (await f.call('swift/test/list', FIXTURE, {})) as { message: string }[];
     expect(findings.map((finding) => finding.message).sort()).toEqual([
       'BasicTests.swift',
+      'Greeter.swift',
       'License.swift',
+      'Literals.swift',
       'Marks.swift',
       'Math.swift',
       'Notes.swift',

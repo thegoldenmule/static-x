@@ -95,6 +95,16 @@ number that makes Swift check suites a real feature rather than a nominal one, a
 `gd/`'s roadmap left open and could not answer favourably — a Godot editor needs 12–40s to reach the
 same point.
 
+**Per-file latency is bimodal, and the slow mode is a window rather than a state.** The 2ms median
+above is what a settled server answers. While sourcekit-lsp is doing background work after first
+contact with a project, the same 204-file sweep measured **73s, median 210ms, p95 8s** — repeatedly,
+on an idle machine, with no stray processes. Wiping the scratch path returned it to 742ms, and a
+*completed* `swift build` into that scratch was fast again (812ms), so this is neither "cold" nor
+"has an index": it is the indexing window itself. A whole-project run can therefore cost 0.8s or 73s
+depending on when it lands, which is worth knowing before quoting either number, and is a real part
+of the case for [the daemon](../swift/daemon/README.md) — a warm session rides through the window
+once instead of meeting it on every invocation.
+
 **The cost that is real is Xcode without `buildServer.json`.** Per-file latency is 35–70× SwiftPM's,
 and D's p95 of 4.7s says the tail is much worse than the median. Zero requests failed and comments
 were found throughout, so this is latency rather than a capability gap — sourcekit-lsp appears to
@@ -114,8 +124,9 @@ whole-project `push` or `baseline` run on an Xcode project takes tens of seconds
    argument is the `(path, mtime)` memo across repeat runs and the Xcode per-file tail. Its README
    must say that, not claim it amortizes a startup that measures 0.3s.
 3. **`swift/comments/long` and `swift/comments/llm-tells`.** Cheap, syntactic, no build.
-4. **`swift/comments/stale-refs`.** Deferred by decision, not by obstacle — see
-   `swift/comments/stale-refs/README.md`, which carries the full measured design.
+4. **`swift/comments/stale-refs`.** Shipped. Resolution needs no build: semantic tokens for the
+   project's own names, string literals for the vocabulary comments actually quote, and a committed
+   19,923-name index generated from `swift-symbolgraph-extract` for the SDK.
 
 ---
 

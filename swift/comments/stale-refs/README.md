@@ -1,17 +1,11 @@
 # swift/comments/stale-refs
 
-Not built. This README is the reason and the design, not a placeholder — in the style of
-[`gd/refactors`](../../../gd/refactors/README.md).
+References in comments that no longer resolve: a DocC link or backtick span naming a symbol nothing
+declares, a file reference to a file that is gone, or a `- Parameter` tag naming no parameter of the
+function it documents.
 
-## Why it is waiting
-
-It was deferred when its resolution corpus was unmeasured and might have needed a built index. That
-turned out to be false, and the obstacle is gone: everything the design needs answers without a
-build. It is deferred now only because the pack shipped its cheap tools first.
-
-Simulated end to end over the three corpora, it reports **220 findings on hotseat-app, 125 at
-`minConfidence: medium`** — against the TypeScript tool's 234 → 132 on this repository. Close enough
-to the same shape that it would belong in `push` at `warn` with the same config.
+Nothing here needs a build. Resolution runs off the same semantic tokens the rest of the comment
+family reads, plus a committed index of the Swift and Apple SDK names.
 
 ## The resolution corpus
 
@@ -63,6 +57,35 @@ parameters, which is vanishingly rare against a 6.8–25% floor — and this cod
 
 Mirror the TypeScript guard too: if any parameter has a form the text parse cannot resolve
 confidently, compute no list and skip validation rather than guess.
+
+## What it reports
+
+| Corpus | Files | Findings | At `minConfidence: medium` |
+| --- | ---: | ---: | ---: |
+| hotseat-app | 204 | 115 | 70 |
+| drum/ios | 82 | 6 | 0 |
+| War | 393 | 62 | 1 |
+
+The TypeScript tool reports 234 → 132 on this repository, so this is the quieter of the two. It sits
+in `push` at `warn` with `minConfidence: medium`.
+
+`baseline` rather than `changed-lines`, and the reason is the same one that puts
+`graph/dead-exports` there: a rename in one file stales a comment in another, so the commit that
+broke the reference need not have touched the file the finding lands in.
+
+### Input
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `extraRoots` | string[] | Other Swift projects whose declared names also count as resolving |
+
+`extraRoots` opens a real session on each root, so the names come from the same compiler
+classification as this project's. A root that does not bind throws rather than contributing nothing
+— an ignored `extraRoot` would look exactly like one whose names did not help.
+
+The measured need for it is concrete: hotseat-app's comments say *"Mirrors `applyWorktreeEvent` in
+mastra-hotseat"* half a dozen times, naming a sibling repository. Those are true positives without
+it and resolvable with it.
 
 ## Cut, with the count as the reason
 
