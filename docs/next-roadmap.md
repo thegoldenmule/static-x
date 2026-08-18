@@ -397,3 +397,20 @@ gate ordering, the bar, and the accounting convention round four wrote down: a `
 is motivated targets surviving the tool's own refusals, never syntactic candidates. Nine of
 the ten candidates would have looked healthy on syntactic counts. That is what a syntactic
 count is for.
+
+## Swift, cut with the measurement
+
+Considered while building `swift/comments`, and rejected on a count rather than on taste. Each was
+measured over 679 files across hotseat-app, drum/ios and War.
+
+- **`<doc:Article>` DocC links** — 0 occurrences. Nothing to resolve.
+- **Extended regex literals `#/…/#`** — 0 occurrences. The comment range source handles them because
+  the compiler does; nothing needed writing.
+- **`workspace/symbol` as a resolution tier** — needs an index store, which needs a build. Every
+  shipped Swift tool answers without one, and that property is what keeps a Swift pre-commit hook
+  affordable; a tier that gave it up would have to earn it.
+- **A hand-written Swift comment lexer** — cancelled outright. `semanticTokens/full` reports every
+  comment form, marks doc comments, and classifies comment-like text in strings, raw strings and
+  interpolation correctly, on a directory with no project file, in 52ms. See
+  [the roadmap](swift-roadmap.md#2-the-obstacle-that-was-expected-and-is-not-there).
+

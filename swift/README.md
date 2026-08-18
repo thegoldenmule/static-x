@@ -5,7 +5,11 @@ The Swift language pack, built on [sourcekit-lsp](https://github.com/swiftlang/s
 
 | Tool | Description |
 | --- | --- |
-| _(none yet)_ | |
+| [`swift/comments/long`](comments/long/README.md) | Comment blocks past a line or character threshold |
+| [`swift/comments/llm-tells`](comments/llm-tells/README.md) | Comments with the hallmarks of generated text |
+
+[`swift/comments/stale-refs`](comments/stale-refs/README.md) is designed and measured but not built;
+its README carries both.
 
 ## What binds this pack to a project
 
