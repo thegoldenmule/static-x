@@ -20,18 +20,6 @@ import type { Finding, Tool } from '../tool/index.js';
  * A directory entry matches everything beneath it.
  */
 
-/** Extensions a ts.Program can hold source files for. */
-const SOURCE_EXTENSIONS = new Set([
-  '.ts',
-  '.tsx',
-  '.mts',
-  '.cts',
-  '.js',
-  '.jsx',
-  '.mjs',
-  '.cjs',
-]);
-
 function isDirectory(file: string): boolean {
   try {
     return statSync(file).isDirectory();
@@ -45,20 +33,31 @@ export class FileScope {
   readonly #entries: readonly string[];
   /** Entries that could be directories, as `dir + sep` prefixes. */
   readonly #prefixes: readonly string[];
+  readonly #sourceExtensions: ReadonlySet<string>;
   #selectsNothing: boolean | undefined;
 
-  private constructor(entries: readonly string[]) {
+  private constructor(entries: readonly string[], sourceExtensions: ReadonlySet<string>) {
     this.#entries = entries;
+    this.#sourceExtensions = sourceExtensions;
     this.#prefixes = entries
-      .filter((entry) => !SOURCE_EXTENSIONS.has(path.extname(entry).toLowerCase()))
+      .filter((entry) => !sourceExtensions.has(path.extname(entry).toLowerCase()))
       .map((entry) => entry + path.sep);
   }
 
   /**
    * Resolves `paths` against every base (project root, working
    * directory), keeping each reading as a candidate.
+   *
+   * `sourceExtensions` is required rather than defaulted, and comes
+   * from the pack whose tools this scope will narrow. A default would
+   * let a new pack silently inherit another language's answer, which
+   * is the bug this parameter exists to remove.
    */
-  static from(paths: readonly string[], bases: readonly string[]): FileScope {
+  static from(
+    paths: readonly string[],
+    bases: readonly string[],
+    sourceExtensions: ReadonlySet<string>,
+  ): FileScope {
     const entries = new Set<string>();
     for (const raw of paths) {
       const trimmed = raw.trim();
@@ -69,7 +68,7 @@ export class FileScope {
       }
       for (const base of bases) entries.add(path.resolve(base, trimmed));
     }
-    return new FileScope([...entries]);
+    return new FileScope([...entries], sourceExtensions);
   }
 
   /** Does this scope name `file`, directly or through a directory? */
@@ -82,16 +81,16 @@ export class FileScope {
   }
 
   /**
-   * True when no entry could name a source file: an empty list, or one
-   * naming only non-source files (a docs-only commit). Dispatch answers
-   * with no findings in that case, so a hook on such a commit never
-   * pays for loading the project. Entries that are real directories
-   * count as selecting, whatever their name looks like.
+   * True when no entry could name a file *this pack* analyzes — an
+   * empty list, a docs-only commit, or a commit touching only another
+   * language. Dispatch answers with no findings then, so the pack never
+   * pays for loading a project it has nothing to say about. Entries
+   * that are real directories count as selecting, whatever their name.
    */
   selectsNothing(): boolean {
     this.#selectsNothing ??= this.#entries.every(
       (entry) =>
-        !SOURCE_EXTENSIONS.has(path.extname(entry).toLowerCase()) && !isDirectory(entry),
+        !this.#sourceExtensions.has(path.extname(entry).toLowerCase()) && !isDirectory(entry),
     );
     return this.#selectsNothing;
   }

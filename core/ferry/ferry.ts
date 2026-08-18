@@ -73,10 +73,16 @@ export class Ferry<S extends FerrySession> {
   #queues = new Map<string, Promise<unknown>>();
 
   readonly #open: (rootPath: string) => S;
+  readonly #sourceExtensions: ReadonlySet<string>;
 
-  constructor(registry: ToolRegistry, open: (rootPath: string) => S) {
+  constructor(
+    registry: ToolRegistry,
+    open: (rootPath: string) => S,
+    sourceExtensions: ReadonlySet<string>,
+  ) {
     this.registry = registry;
     this.#open = open;
+    this.#sourceExtensions = sourceExtensions;
   }
 
   session(projectRoot: string): S {
@@ -124,7 +130,11 @@ export class Ferry<S extends FerrySession> {
     // and never fails on a project this pack cannot bind.
     let scope: FileScope | undefined;
     if (files) {
-      scope = FileScope.from(files, [path.resolve(projectRoot), process.cwd()]);
+      scope = FileScope.from(
+        files,
+        [path.resolve(projectRoot), process.cwd()],
+        this.#sourceExtensions,
+      );
       if (scope.selectsNothing()) return [];
     }
 
