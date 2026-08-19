@@ -15,6 +15,7 @@
     "swift",
     "mcp",
     "hooks",
+    "agents",
     ".claude/skills",
     "README.md",
     "!**/*.test.ts"

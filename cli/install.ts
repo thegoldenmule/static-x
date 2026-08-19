@@ -137,37 +137,50 @@ async function gitChanges(root: string, force: boolean, io: CliIo): Promise<Chan
 }
 
 /**
- * The backlog skill, copied from this package rather than generated, so
- * the prompt an agent follows is a reviewable file with a history rather
- * than a string literal in a TypeScript source.
+ * The backlog skill and the agents, copied from this package rather
+ * than generated, so the prompt an agent follows is a reviewable file
+ * with a history rather than a string literal in a TypeScript source.
+ * Sources live outside `.claude/` where convention differs (agents sit
+ * in `agents/` here so they read as part of the package, not its own
+ * Claude configuration); the destination is always the convention.
  */
+const CLAUDE_FILES: readonly { source: string; dest: string }[] = [
+  {
+    source: '.claude/skills/static-x-backlog/SKILL.md',
+    dest: '.claude/skills/static-x-backlog/SKILL.md',
+  },
+  { source: 'agents/comment-tightener.md', dest: '.claude/agents/comment-tightener.md' },
+];
+
 async function skillChanges(root: string): Promise<Change[]> {
-  const source = path.resolve(import.meta.dirname, '../.claude/skills/static-x-backlog/SKILL.md');
-  let text: string;
-  try {
-    text = await readFile(source, 'utf8');
-  } catch {
-    return [];
-  }
-  const file = path.join(root, '.claude/skills/static-x-backlog/SKILL.md');
-  if (path.resolve(file) === path.resolve(source)) return [];
-  let existing: string | undefined;
-  try {
-    existing = await readFile(file, 'utf8');
-  } catch {
-    existing = undefined;
-  }
-  if (existing === text) return [];
-  return [
-    {
+  const changes: Change[] = [];
+  for (const entry of CLAUDE_FILES) {
+    const source = path.resolve(import.meta.dirname, '..', entry.source);
+    let text: string;
+    try {
+      text = await readFile(source, 'utf8');
+    } catch {
+      continue;
+    }
+    const file = path.join(root, entry.dest);
+    if (path.resolve(file) === source) continue;
+    let existing: string | undefined;
+    try {
+      existing = await readFile(file, 'utf8');
+    } catch {
+      existing = undefined;
+    }
+    if (existing === text) continue;
+    changes.push({
       file,
       note: existing === undefined ? 'create' : 'update',
       write: async () => {
         await mkdir(path.dirname(file), { recursive: true });
         await writeFile(file, text, 'utf8');
       },
-    },
-  ];
+    });
+  }
+  return changes;
 }
 
 async function claudeChanges(root: string): Promise<Change[]> {

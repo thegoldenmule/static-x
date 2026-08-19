@@ -70,6 +70,15 @@ describe('static-x install', () => {
     expect(skill).toMatch(/Never run `static-x baseline` during the loop/);
   });
 
+  it('ships the comment-tightener agent under the Claude convention', async () => {
+    const root = await project('husky');
+    await runCli(['install', '--project', root, '--target', 'claude'], capture(root).io);
+    const agent = await read(root, '.claude/agents/comment-tightener.md');
+    expect(agent).toMatch(/^---\nname: comment-tightener/);
+    // The line that separates a mandated campaign from imposed taste.
+    expect(agent).toMatch(/The config diff\nis the mandate/);
+  });
+
   it('writes executable hooks into .git/hooks when husky is absent', async () => {
     const root = await project('git');
     expect(await runCli(['install', '--project', root, '--target', 'git'], capture(root).io)).toBe(0);
