@@ -25,13 +25,14 @@ A monorepo binds per root: every directory holding a `tsconfig.json` (pack `ts`)
 `Package.swift`, `*.xcodeproj`, `buildServer.json`, or `compile_commands.json` (pack `swift`) is its
 own campaign, with its own config, baseline, and terminal state. Do the roots one at a time.
 
-1. **Write the policy** into the root's `static-x.json`. Tuning goes under `input`; `maxChars` is
-   the anti-cheat — "one line" must not become one 400-character line. Match it to the project's
-   line width.
+1. **Write the policy** into the root's `static-x.json`. The budget is whatever the human asked
+   for; unless they named one, it is one line and 83 characters. Tuning goes under `input`, and
+   `maxChars` is the anti-cheat — "one line" must not become one 400-character line — so if the
+   project's own line width is narrower than the budget, use that instead.
 
    ```json
    {
-     "swift": { "comments": { "long": { "input": { "maxLines": 1, "maxChars": 120 } } } },
+     "swift": { "comments": { "long": { "input": { "maxLines": 1, "maxChars": 83 } } } },
      "todo": { "codes": ["comment.long", "comment.llm-tell", "comment.stale-ref", "comment.stale-param"] }
    }
    ```
