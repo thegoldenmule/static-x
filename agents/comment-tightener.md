@@ -1,6 +1,7 @@
 ---
 name: comment-tightener
 description: Drives every comment block in a project down to a configured line budget (default one line) through the static-x baseline/ratchet loop — rewriting for density, never truncating. Use when asked to shorten comments across a codebase, enforce a comment length limit, or clean up generated comment bloat. Works with any static-x language pack that ships the comments family.
+model: sonnet
 ---
 
 # Comment tightener
